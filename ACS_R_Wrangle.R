@@ -1,5 +1,8 @@
 library(dplyr)
 library(tidyverse)
+
+library(shiny)
+
 ACS_2019_state_cleaned <- ACS_2019_state_new %>% select(Qualifying.Name, State..FIPS.Code., Total.Population, Housing.Units, Civilian.Population.in.Labor.Force.16.Years.and.Over., Civilian.Population.in.Labor.Force.16.Years.and.Over..Employed, Civilian.Population.in.Labor.Force.16.Years.and.Over..Unemployed, Median.Household.Income..In.2019.Inflation.Adjusted.Dollars., Per.Capita.Income..In.2019.Inflation.Adjusted.Dollars., Median.Value, Median.Gross.Rent, Median.Gross.Rent.as.a.Percentage.of.Household..Income.in.the.Past.12.Months..Dollars., Average.Commute.to.Work..In.Min.) %>% mutate(year = 2019)
 ACS_2020_state_cleaned <- ACS_2020_state_new %>% select(Qualifying.Name, State..FIPS.Code., Total.Population, Housing.Units, Civilian.Population.in.Labor.Force.16.Years.and.Over., Civilian.Population.in.Labor.Force.16.Years.and.Over..Employed, Civilian.Population.in.Labor.Force.16.Years.and.Over..Unemployed, Median.Household.Income..In.2020.Inflation.Adjusted.Dollars., Per.Capita.Income..In.2020.Inflation.Adjusted.Dollars., Median.Value, Median.Gross.Rent, Median.Gross.Rent.as.a.Percentage.of.Household..Income.in.the.Past.12.Months..Dollars., Average.Commute.to.Work..In.Min.) %>% mutate(year = 2020)
 ACS_2021_state_cleaned <- ACS_2021_state_new %>% select(Qualified.Area.Name, State..FIPS.Code., Total.Population, Housing.Units, Civilian.Population.in.Labor.Force.16.Years.and.Over., Civilian.Population.in.Labor.Force.16.Years.and.Over..Employed, Civilian.Population.in.Labor.Force.16.Years.and.Over..Unemployed, Median.Household.Income..In.2021.Inflation.Adjusted.Dollars., Per.Capita.Income..In.2021.Inflation.Adjusted.Dollars., Median.Value, Median.Gross.Rent, Median.Gross.Rent.as.a.Percentage.of.Household..Income.in.the.Past.12.Months..Dollars., Average.Commute.to.Work..In.Min.) %>% mutate(year = 2021)
@@ -10,3 +13,5 @@ ACS_2024_state_cleaned <- ACS_2024_state_new %>% select(Qualified.Area.Name, Tot
 #Convert the datasets into a format where each observation has the state and year assigned to it
 #Need to rename all the variables into something cleaner and the same across all year datasets
 #Figure out those widgets to make the website
+
+#reminder to self: you have population and housing units as variables. You can create new vars that measure the change in growth of these two
