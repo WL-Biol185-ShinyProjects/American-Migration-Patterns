@@ -46,7 +46,7 @@ state_population_growth_clean <-
   state_population_growth_clean[
     order(state_population_growth_clean$NAME), ]
 
-# Renumber states from 01 to 50
+# Renumbers states from 01 to 50
 state_population_growth_clean$STATE <-
   sprintf("%02d", 1:nrow(state_population_growth_clean))
 
