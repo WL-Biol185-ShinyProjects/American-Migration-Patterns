@@ -17,3 +17,14 @@ plot(
   pch = 19
 )
 
+cor.test(
+  combined_data$housing_cost_burden_pct_2024,
+  combined_data$population_growth_pct
+)
+
+model <- lm(
+  population_growth_pct ~ housing_cost_burden_pct_2024,
+  data = combined_data
+)
+
+abline(model, col = "red", lwd = 2)
