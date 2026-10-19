@@ -78,8 +78,12 @@ ACS_2024_state_cleaned <- ACS_2024_state_new %>% select(Qualified.Area.Name, Tot
 
 ACS_allset <- bind_rows(ACS_2019_state_cleaned, ACS_2020_state_cleaned, ACS_2021_state_cleaned, ACS_2022_state_cleaned, ACS_2023_state_cleaned, ACS_2024_state_cleaned)
 
-#Convert the datasets into a format where each observation has the state and year assigned to it
-#Need to rename all the variables into something cleaner and the same across all year datasets
-#Figure out those widgets to make the website
+ACS_allset1 <- ACS_allset %>% mutate(unemployment_rate = unemployed / (unemployed+employed))
+
+#Convert the datasets into a format where each observation has the state and year assigned to it (done)
+#Need to rename all the variables into something cleaner and the same across all year datasets (done)
+#Unemployment rate, labor force participation rate, median house value to median income ratio (make this)
+#try to get gini coefficient into the data (either by redownloading the files or doing a merge)
+#Figure out those widgets to make the website 
 
 #reminder to self: you have population and housing units as variables. You can create new vars that measure the change in growth of these two
