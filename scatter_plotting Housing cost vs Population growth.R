@@ -28,3 +28,5 @@ model <- lm(
 )
 
 abline(model, col = "red", lwd = 2)
+
+
