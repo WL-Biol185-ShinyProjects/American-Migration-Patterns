@@ -91,7 +91,24 @@ p + geom_point(alpha = .35) + geom_smooth() + labs(x = "Median Household Income"
     subtitle = "View of Household median income and median house value per state-year (2019-2024)", 
     caption = "Data: Social Explorer")
 
-acs_clean <- ACS_2020_state_cleaned %>% # Define our ACS data frame
+q <- ggplot(data = ACS_allset2, mapping = aes(x = pop, y = avg_commute)) #Create ggplot where the x-axis is the log of GDP per Capita and the y axis is life expectancy. 
+q + geom_point(alpha = .35) + geom_smooth() + labs(x = "Population", 
+    y = "Average Commute in min", title = "Relationship of Average Commute and Population per state-year", 
+    subtitle = "View of Average Commute in min",
+    caption = "Data: Social Explorer")
+
+
+
+
+
+
+
+
+
+
+
+
+acs_clean <- ACS_2023_state_cleaned %>% # Define our ACS data frame
   select( # keep and rename the columns you'll use (the FIPS info plus the variables you'll select)
     state = FIPS,# state FIPS code
     pop = pop
@@ -119,6 +136,132 @@ state_sf <- states(cb = TRUE, year = 2019) %>%   # cb = TRUE gives simplified bo
 state_sf <- shift_geometry(state_sf)
 
 ggplot(state_sf) + geom_sf(aes(fill = pop))
+
+
+
+
+
+
+
+
+
+library(shiny)
+library(tidycensus)
+library(tigris)
+library(sf)
+library(dplyr)
+library(ggplot2)
+library(scales)
+
+options(tigris_use_cache = TRUE)
+
+years <- 2009:2024
+
+# ---- Data (loaded once at startup) ----
+state_geo <- states(cb = TRUE, year = 2019) %>%
+  filter(!STUSPS %in% c("PR", "VI", "GU", "AS", "MP")) %>%
+  mutate(fips = as.numeric(STATEFP)) %>%
+  select(fips, NAME, geometry) %>%
+  shift_geometry()
+
+pop_all <- bind_rows(lapply(years, function(y) {
+  get_acs(geography = "state", variables = "B01003_001",
+          year = y, survey = "acs5") %>%
+    transmute(fips = as.numeric(GEOID), year = y, pop = estimate)
+}))
+
+pop_range <- range(pop_all$pop, na.rm = TRUE)
+
+# ---- UI ----
+ui <- fluidPage(
+  titlePanel("US Population by State"),
+  sliderInput(
+    "year", "Select year:",
+    min = min(years), max = max(years),
+    value = max(years), step = 1,
+    sep = "",              # show 2019, not 2,019
+    width = "100%"
+  ),
+  plotOutput("heatmap", height = "650px")
+)
+
+# ---- Server ----
+server <- function(input, output, session) {
+  
+  output$heatmap <- renderPlot({
+    plot_data <- state_geo %>%
+      left_join(filter(pop_all, year == input$year), by = "fips")
+    
+    ggplot(plot_data) +
+      geom_sf(aes(fill = pop), color = "white", linewidth = 0.2) +
+      scale_fill_distiller(
+  palette = "YlOrRd", direction = 1,
+  trans = "log10",
+  limits = pop_range,
+  labels = label_comma(),
+  name = "Population"
+) +
+      labs(title = paste("State population,", input$year)) +
+      theme_void(base_size = 14) +
+      theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+  })
+}
+
+shinyApp(ui, server)
+
+
+
+
+
+# ---- Data (loaded once at startup) ----
+state_geo <- states(cb = TRUE, year = 2019) %>%
+  filter(!STUSPS %in% c("PR", "VI", "GU", "AS", "MP")) %>%
+  mutate(fips = as.numeric(STATEFP)) %>%
+  select(fips, NAME, geometry) %>%
+  shift_geometry()
+
+pop_all <- pop_all %>%
+  arrange(fips, year) %>%
+  group_by(fips) %>%
+  mutate(yoy = (pop / lag(pop) - 1) * 100) %>%
+  ungroup()
+
+yoy_range <- range(pop_all$yoy, na.rm = TRUE)   # <- this was missing
+
+# ---- UI ----
+ui <- fluidPage(
+  titlePanel("US Population by State"),
+  sliderInput(
+    "year", "Select year:",
+    min = min(years) + 1, max = max(years),
+    value = max(years), step = 1, sep = "", width = "100%"
+  ),
+  plotOutput("heatmap", height = "650px")
+)
+
+# ---- Server ----
+server <- function(input, output, session) {
+  
+  output$heatmap <- renderPlot({
+  plot_data <- state_geo %>%
+    left_join(filter(pop_all, year == input$year), by = "fips")
+
+  ggplot(plot_data) +
+    geom_sf(aes(fill = yoy), color = "white", linewidth = 0.2) +
+    scale_fill_gradient2(
+      low = "#2166AC", mid = "white", high = "#B2182B",
+      midpoint = 0,
+      limits = yoy_range,
+      name = "% change from\nprevious year"
+    ) +
+    labs(title = paste("Population change,", input$year - 1, "to", input$year)) +
+    theme_void(base_size = 14) +
+    theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+})
+}
+
+shinyApp(ui, server)
+
 
 #Convert the datasets into a format where each observation has the state and year assigned to it (done)
 #Need to rename all the variables into something cleaner and the same across all year datasets (done)
