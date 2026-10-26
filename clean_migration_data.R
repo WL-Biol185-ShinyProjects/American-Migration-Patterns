@@ -270,7 +270,7 @@ colSums(is.na(outflow_clean_2122))
 
 
 # ==========================================
-# CLEANING MIGRATION DATA: 2021
+# CLEANING MIGRATION DATA: 2020 -2021
 # ==========================================
 
 
@@ -393,5 +393,145 @@ write_csv(
 write_csv(
   outflow_clean_2021,
   "state_outflow_clean_2021.csv"
+)
+
+
+
+# ==========================================
+# CLEANING MIGRATION DATA: 2019-2020
+# ==========================================
+
+# STEP 1: Import the original CSV files
+
+inflow_1920 <- read_csv(
+  "stateinflow1920.csv",
+  col_types = cols(
+    y1_statefips = col_character(),
+    y2_statefips = col_character(),
+    .default = col_guess()
+  )
+)
+
+outflow_1920 <- read_csv(
+  "stateoutflow1920.csv",
+  col_types = cols(
+    y1_statefips = col_character(),
+    y2_statefips = col_character(),
+    .default = col_guess()
+  )
+)
+
+# STEP 2: Identify the 50 states and DC
+
+state_codes_1920 <- intersect(
+  unique(inflow_1920$y2_statefips),
+  unique(outflow_1920$y1_statefips)
+)
+
+# STEP 3: Create a state name lookup
+
+state_lookup_1920 <- bind_rows(
+  inflow_1920 %>%
+    filter(
+      y1_statefips %in% state_codes_1920,
+      y2_statefips %in% state_codes_1920,
+      y1_statefips != y2_statefips
+    ) %>%
+    transmute(
+      state_fips = y1_statefips,
+      state_name = y1_state_name
+    ),
+  outflow_1920 %>%
+    filter(
+      y1_statefips %in% state_codes_1920,
+      y2_statefips %in% state_codes_1920,
+      y1_statefips != y2_statefips
+    ) %>%
+    transmute(
+      state_fips = y2_statefips,
+      state_name = y2_state_name
+    )
+) %>%
+  distinct()
+
+# STEP 4: Create cleaning function
+
+clean_1920 <- function(data) {
+  
+  data %>%
+    filter(
+      y1_statefips %in% state_codes_1920,
+      y2_statefips %in% state_codes_1920,
+      y1_statefips != y2_statefips
+    ) %>%
+    transmute(
+      year = "2019-2020",
+      origin_fips = y1_statefips,
+      destination_fips = y2_statefips,
+      tax_returns = na_if(n1, -1),
+      exemptions = na_if(n2, -1),
+      agi_thousands = na_if(AGI, -1)
+    ) %>%
+    left_join(
+      state_lookup_1920 %>%
+        rename(
+          origin_fips = state_fips,
+          origin_state = state_name
+        ),
+      by = "origin_fips"
+    ) %>%
+    left_join(
+      state_lookup_1920 %>%
+        rename(
+          destination_fips = state_fips,
+          destination_state = state_name
+        ),
+      by = "destination_fips"
+    ) %>%
+    select(
+      year, origin_state, destination_state,
+      origin_fips, destination_fips,
+      tax_returns, exemptions, agi_thousands
+    )
+}
+
+# STEP 5: Clean both datasets
+
+inflow_clean_1920 <- clean_1920(inflow_1920)
+outflow_clean_1920 <- clean_1920(outflow_1920)
+
+# STEP 6: View cleaned data
+
+View(inflow_clean_1920)
+View(outflow_clean_1920)
+
+# STEP 7: Check results
+
+nrow(inflow_clean_1920)
+nrow(outflow_clean_1920)
+
+colSums(is.na(inflow_clean_1920))
+colSums(is.na(outflow_clean_1920))
+
+# Check duplicate state pairs
+
+sum(duplicated(
+  inflow_clean_1920[c("origin_fips", "destination_fips")]
+))
+
+sum(duplicated(
+  outflow_clean_1920[c("origin_fips", "destination_fips")]
+))
+
+# STEP 8: Save cleaned CSV files
+
+write_csv(
+  inflow_clean_1920,
+  "state_inflow_clean_1920.csv"
+)
+
+write_csv(
+  outflow_clean_1920,
+  "state_outflow_clean_1920.csv"
 )
 
