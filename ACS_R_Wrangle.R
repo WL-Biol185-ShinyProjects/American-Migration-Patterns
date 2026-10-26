@@ -79,6 +79,13 @@ ACS_2024_state_cleaned <- ACS_2024_state_new %>% select(Qualified.Area.Name, Tot
       median_gross_rent_pct = Median.Gross.Rent.as.a.Percentage.of.Household.Income, avg_commute = Average.Commute.to.Work..In.Min.
       )
 
+#ACS_2019_state_cleaned <- ACS_2019_state_new %>% mutate(year = 2019) %>% rename(name = Qualifying.Name, FIPS = State..FIPS.Code., pop = Total.Population, housing_units = Housing.Units, 
+#labor_force = Civilian.Population.in.Labor.Force.16.Years.and.Over., employed = Civilian.Population.in.Labor.Force.16.Years.and.Over..Employed,
+#unemployed = Civilian.Population.in.Labor.Force.16.Years.and.Over..Unemployed, median_house_income = Median.Household.Income..In.2019.Inflation.Adjusted.Dollars.,
+#per_capita_income = Per.Capita.Income..In.2019.Inflation.Adjusted.Dollars., median_house_value = Median.Value, median_gross_rent = Median.Gross.Rent,
+#median_gross_rent_pct = Median.Gross.Rent.as.a.Percentage.of.Household..Income.in.the.Past.12.Months..Dollars., avg_commute = Average.Commute.to.Work..In.Min.)
+#
+
 ACS_allset <- bind_rows(ACS_2019_state_cleaned, ACS_2020_state_cleaned, ACS_2021_state_cleaned, ACS_2022_state_cleaned, ACS_2023_state_cleaned, ACS_2024_state_cleaned)
 
 ACS_allset1 <- ACS_allset %>% mutate(unemployment_rate = unemployed / (unemployed+employed))
@@ -144,6 +151,7 @@ ggplot(state_sf) + geom_sf(aes(fill = pop))
 
 
 #This is the main part of the code that should be used for generating a US heatmap of population changes by year# 
+#Research this further and make sure the data from this is reliable
 
 library(shiny)
 library(tidycensus)
