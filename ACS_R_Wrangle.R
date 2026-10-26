@@ -143,7 +143,7 @@ ggplot(state_sf) + geom_sf(aes(fill = pop))
 
 
 
-
+#This is the main part of the code that should be used for generating a US heatmap of population changes by year# 
 
 library(shiny)
 library(tidycensus)
