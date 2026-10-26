@@ -4,7 +4,7 @@ library(tigris)
 
 library(shiny)
 library(sf)
-library(socviz)
+#library(socviz)
 
 #Cleaning the data
 ACS_2019_state_cleaned <- ACS_2019_state_new %>% select(Qualifying.Name, State..FIPS.Code., Total.Population, Housing.Units, Civilian.Population.in.Labor.Force.16.Years.and.Over., Civilian.Population.in.Labor.Force.16.Years.and.Over..Employed, 
