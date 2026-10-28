@@ -113,3 +113,6 @@ leaflet(ACS_2024_state_cleaned) %>%
   addLegend(pal = pal, values = ~`Total Population`, opacity = 0.7,
             title = "Total Population", position = "bottomright",
             labFormat = labelFormat(big.mark = ","))
+
+#Notes for project: poverty rate is not a straightforward calculation
+#Do more research on IRS exemptions statistics
