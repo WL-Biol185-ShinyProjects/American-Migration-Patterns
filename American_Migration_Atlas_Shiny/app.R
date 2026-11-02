@@ -444,7 +444,7 @@ ui <- fluidPage(
               tags$ul(
                 tags$li(tags$b("Census population estimates 2020–2025:"),
                         " Population Change by State Level.csv"),
-                tags$li(tags$b("ACS annual socioeconomic data 2019–2024:"),
+                tags$li(tags$b("American Community Survey 5-year estimates (2020–2024) from Social Explorer:"),
                         " ACS_2019_state_new.csv through ACS_2024_state_new.csv"),
                 tags$li(tags$b("2024 housing cost burden:"),
                         " Housing Costs as a % of Household Income in the Past 12 Months.csv"),
