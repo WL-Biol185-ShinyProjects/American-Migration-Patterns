@@ -476,6 +476,8 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,
 .team-link {margin-top:auto;color:var(--accent-dark);font-size:13px;font-weight:700;text-decoration:underline;text-underline-offset:3px;padding:8px 0;}
 .team-link:hover {color:var(--accent);text-decoration-thickness:2px;}
 .atlas-card li {margin-bottom:8px;}
+/* Shiny accepts the pixel fallback; the browser handles responsive CSS. */
+#state_map {height:470px!important;height:clamp(360px, 43vw, 560px)!important;}
 @media(max-width:1150px) {
   .two-even,.two-panels {grid-template-columns:minmax(0,1fr);gap:0;}
   .kpi-grid {grid-template-columns:repeat(2,minmax(0,1fr));}
@@ -3649,7 +3651,7 @@ ui <- fluidPage(
                       tabPanel(title = "Overview", value = "overview",
                                tags$section(class = "atlas-card atlas-map-section",
                                             uiOutput("atlas_map_period"),
-                                            plotlyOutput("state_map", height = "clamp(360px, 43vw, 560px)"),
+                                            plotlyOutput("state_map", height = "470px"),
                                             uiOutput("map_source_note"),
                                             uiOutput("selected_details")
                                ),
