@@ -2908,9 +2908,9 @@ ui <- fluidPage(
                                    team_card(
                                      "lucas-kim.png", "Lucas Kim", "Economics · Class of 2027",
                                      paste0(
-                                       "Lucas studies economics with a minor in Latin American and Caribbean Studies. ",
-                                       "His interests in environmental economics and public policy offer perspective ",
-                                       "on economic opportunity and regional conditions."
+                                       "Lucas studies economics with a minor in Latin American and Caribbean Studies and Data Science. ",
+                                       "He is interested in public policy, energy economics, and working in the government as an ",
+                                       "economist. He participated in Princeton PPIA JSI in the summer of 2026."
                                      ),
                                      "https://www.linkedin.com/in/lucas-kim-2b321a28a/"
                                    ),
@@ -2935,7 +2935,7 @@ ui <- fluidPage(
                                ),
                                ui_card("Why we built American Migration Atlas",
                                        p("As part of our BIOL 1185 Visualizing Big Data project, we investigate where U.S. populations are changing and how interstate migration relates to rent, home values, employment, income and other state-level conditions."),
-                                       p("Our visualizations use publicly available Census, American Community Survey (ACS) and IRS data. We distinguish population growth from interstate migration and treat correlations as exploratory associations, not explanations of individual decisions."),
+                                       p("Our visualizations use publicly available Census Bureau, American Community Survey (ACS) and IRS data. We distinguish population growth from interstate migration and treat correlations as exploratory associations, not explanations of individual decisions."),
                                        tags$span(class = "atlas-badge", "Washington and Lee University · BIOL 1185")
                                )
                       ),
@@ -2969,6 +2969,7 @@ ui <- fluidPage(
                                ),
                                ui_card("Important interpretation and data-quality notes",
                                        tags$ul(
+                                         tags$li("The unit of observation in this project is a state-year."),
                                          tags$li("Both IRS inflow and outflow files describe the same routes. We analyze each pair once rather than add both source files."),
                                          tags$li("Migration entries use the source field 'exemptions' (N2), not a complete count of all people moving. Some pairs are suppressed or omitted, so reported state totals can be incomplete."),
                                          tags$li("The route universe includes 50 states and Washington, D.C.; maps and state comparisons cover the 50 states only."),
@@ -2976,7 +2977,7 @@ ui <- fluidPage(
                                          tags$li("We have no population denominators for 2019, 2021, 2022 or 2023. Rate per 1,000 is therefore a 2020-population-normalized comparison, not an official year-specific rate."),
                                          tags$li("Only 2020 and 2025 population estimates are available. No intermediate annual population points are fabricated."),
                                          tags$li("ACS extracts may use overlapping multi-year samples, and survey-year dollar units vary. Confirm the Census product when interpreting change over time."),
-                                         tags$li("Comparing ACS attributes with migration does not reveal why individuals relocated or prove causal relationships."),
+                                         tags$li("The purpose of regressing ACS variables on population changes is to conduct exploratory analyses between variables of interest and population change. This is not a causal study."),
                                          tags$li("The old standalone 2024 housing-cost-burden source was not supplied with this new dataset; that metric has been removed.")
                                        )
                                )
