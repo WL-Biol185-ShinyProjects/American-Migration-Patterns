@@ -1,26 +1,968 @@
-# AMERICAN MIGRATION ATLAS — REVISED FOR THE TEAM'S CLEAN CSV DATA
+# AMERICAN MIGRATION ATLAS — COURSE-ALIGNED REFACTOR
 # BIOL 1185 | Washington and Lee University
 # Files read: 1 population growth, 6 ACS years, 8 IRS flows.
-# The original uploaded dataset is included in the accompanying ZIP.
-# Required packages: shiny, plotly, ggplot2, DT
-# Run with RStudio's "Run App" after extracting the entire package.
+# Uses the same 15 CSVs as the original app; keep their filenames unchanged.
+# Required packages: shiny, ggplot2, dplyr, plotly, DT
+# Run with RStudio's "Run App" in your existing CSV project folder.
+# Course references:
+# https://positconnect.wlu.edu/bio185/c-06-data-transformation.html
+# https://positconnect.wlu.edu/bio185/c-07-exploring-data.html
+# https://positconnect.wlu.edu/bio185/c-10-joins.html
+# Course patterns: read.csv, %>%, filter, arrange, mutate, group_by,
+# summarize, joins, ggplot layers, and ordinary Shiny UI/server blocks.
+# Plotly, DT, CSS/JavaScript, and encoded photos are retained extensions.
+# They preserve existing behavior; they are not all shown in the linked lessons.
 # IRS route counts below are the fields named "exemptions" (N2 proxy)
 # and not a Census count of every person who moved.
 
-required_packages <- c("shiny", "plotly", "ggplot2", "DT")
-missing_packages <- required_packages[
-  !vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)
-]
-if (length(missing_packages)) {
-  stop("Install missing packages first: install.packages(c(",
-       paste(shQuote(missing_packages), collapse = ", "), "))")
-}
-
+# Install these once in the RStudio console if needed:
+# install.packages(c("shiny", "ggplot2", "dplyr", "plotly", "DT"))
 library(shiny)
-library(plotly)
 library(ggplot2)
+library(dplyr)
+# Extensions: Plotly supplies hover/click/zoom; DT supplies searchable tables.
+library(plotly)
 library(DT)
 
+# -------------------- LOAD THE 15 PROVIDED CLEAN CSV FILES --------------------
+# Locate supplied CSV files automatically, regardless of whether RStudio starts
+# in the repo root or in the Shiny subfolder.
+repo_candidates <- unique(c(
+  getwd(),
+  file.path(getwd(), "American_Migration_Atlas_Shiny"),
+  file.path(getwd(), "Atlas_Team_Photos_Ready")
+))
+repo_hits <- repo_candidates[file.exists(file.path(repo_candidates,
+                                                   "state_population_growth_clean.csv"))]
+if (length(repo_hits) == 0L) {
+  stop("Could not locate state_population_growth_clean.csv. Keep the supplied CSVs " ,
+       "beside app.R or in American_Migration_Atlas_Shiny.")
+}
+repo_dir <- normalizePath(repo_hits[1], mustWork = TRUE)
+read_source <- function(filename) {
+  path <- file.path(repo_dir, filename)
+  if (!file.exists(path)) stop("Missing CSV in your app folder: ", filename)
+  read.csv(path, check.names = FALSE, stringsAsFactors = FALSE,
+           fileEncoding = "UTF-8-BOM", na.strings = c("NA", "", "N/A"))
+}
+as_number <- function(x) {
+  suppressWarnings(as.numeric(gsub("[$,% ]", "", as.character(x))))
+}
+canon_fips <- function(x) sprintf("%02d", as.integer(as_number(x)))
+period_labels <- c("1920" = "2019–2020", "2021" = "2020–2021",
+                   "2122" = "2021–2022", "2223" = "2022–2023")
+
+# The new population file has only 2020 and 2025 endpoints, NOT 2021–2024.
+raw_pop <- read_source("state_population_growth_clean.csv")
+stopifnot(all(c("STATE", "NAME", "POPESTIMATE2020", "POPESTIMATE2025",
+                "population_growth_pct") %in% names(raw_pop)))
+pop <- filter(raw_pop, NAME %in% state.name)
+pop <- data.frame(
+  fips = canon_fips(pop$STATE), state = pop$NAME,
+  abbr = state.abb[match(pop$NAME, state.name)],
+  population_2020 = as_number(pop$POPESTIMATE2020),
+  population_2025 = as_number(pop$POPESTIMATE2025),
+  population_growth_pct = as_number(pop$population_growth_pct),
+  stringsAsFactors = FALSE
+)
+pop <- arrange(pop, state)
+stopifnot(nrow(pop) == 50L, !anyDuplicated(pop$fips), !anyNA(pop))
+stopifnot(all(abs(pop$population_growth_pct -
+                    100 * (pop$population_2025 - pop$population_2020) / pop$population_2020) < 0.011))
+
+# Lessons 4, 6, and 10: one readable function cleans each yearly table.
+# The 2024 export uses different column names, so name those differences directly.
+load_acs_year <- function(year) {
+  filename <- paste0("ACS_", year, "_state_new.csv")
+  if (year == 2024 && !file.exists(file.path(repo_dir, filename))) {
+    filename <- "ACS_2024_state_new(1).csv"
+  }
+  raw <- read_source(filename)
+  raw$fips <- canon_fips(raw$FIPS)
+  raw <- filter(raw, fips %in% pop$fips)
+  stopifnot(nrow(raw) == 50L, !anyDuplicated(raw$fips))
+  
+  income_column <- paste0(
+    "Median Household Income (In ", year, " Inflation Adjusted Dollars)"
+  )
+  labor_column <- "Civilian Population in Labor Force 16 Years and Over:"
+  home_column <- "Median Value"
+  rent_share_column <- paste0(
+    "Median Gross Rent as a Percentage of Household ",
+    " Income in the Past 12 Months (Dollars)"
+  )
+  poverty_total_column <- "Population for Whom Poverty Status Is Determined:"
+  poverty_prefix <- "Population for Whom Poverty Status Is Determined: "
+  
+  if (year == 2024) {
+    labor_column <- "Civilian Population in Labor Force 16 Years and Over"
+    home_column <- "Median House Value"
+    rent_share_column <- "Median Gross Rent as a Percentage of Household Income"
+    poverty_total_column <- "Population for Whom Poverty Status Is Determined"
+    poverty_prefix <- paste0(poverty_prefix, "Ratio of Income to Poverty Level ")
+  }
+  required_columns <- c(
+    income_column, labor_column, home_column, rent_share_column,
+    poverty_total_column, paste0(poverty_prefix, c("Under .50", ".50 to .74", ".75 to .99")),
+    "Median Gross Rent", "Average Commute to Work (In Min)",
+    "Civilian Population in Labor Force 16 Years and Over: Unemployed"
+  )
+  if (!all(required_columns %in% names(raw))) {
+    stop("An expected column is missing from ", filename)
+  }
+  
+  # [[name]] selects a column whose name is stored in a variable (lesson 5).
+  poverty_below <- as_number(raw[[paste0(poverty_prefix, "Under .50")]]) +
+    as_number(raw[[paste0(poverty_prefix, ".50 to .74")]]) +
+    as_number(raw[[paste0(poverty_prefix, ".75 to .99")]])
+  labor_force <- as_number(raw[[labor_column]])
+  poverty_total <- as_number(raw[[poverty_total_column]])
+  unemployed <- as_number(
+    raw[["Civilian Population in Labor Force 16 Years and Over: Unemployed"]]
+  )
+  data.frame(
+    fips = raw$fips, acs_year = as.integer(year),
+    median_income = as_number(raw[[income_column]]),
+    median_home_value = as_number(raw[[home_column]]),
+    median_rent = as_number(raw[["Median Gross Rent"]]),
+    median_rent_pct = as_number(raw[[rent_share_column]]),
+    unemployment_pct = ifelse(is.finite(labor_force) & labor_force > 0,
+                              100 * unemployed / labor_force, NA_real_),
+    poverty_pct = ifelse(is.finite(poverty_total) & poverty_total > 0,
+                         100 * poverty_below / poverty_total, NA_real_),
+    commute_minutes = as_number(raw[["Average Commute to Work (In Min)"]])
+  )
+}
+acs_all <- data.frame()
+for (year in 2019:2024) {
+  year_data <- load_acs_year(year)
+  acs_all <- bind_rows(acs_all, year_data)
+}
+stopifnot(nrow(acs_all) == 300L)
+
+# The paired inflow and outflow files are two representations of the SAME
+# migration routes, so do NOT add the two files together.
+# Use incoming routes as one canonical list, and validate the paired outgoing
+# file's origin/destination keys and N1/N2 counts for parity.
+load_irs_period <- function(period) {
+  in_csv <- read_source(paste0("state_inflow_clean_", period, ".csv"))
+  out_csv <- read_source(paste0("state_outflow_clean_", period, ".csv"))
+  required <- c("year", "origin_state", "destination_state", "origin_fips",
+                "destination_fips", "tax_returns", "exemptions", "agi_thousands")
+  stopifnot(all(required %in% names(in_csv)), all(required %in% names(out_csv)))
+  for (d in list(in_csv, out_csv)) {
+    if (anyDuplicated(paste(d$origin_fips, d$destination_fips)))
+      stop("Duplicate origin-destination pairs in IRS file")
+  }
+  a_key <- paste(canon_fips(in_csv$origin_fips), canon_fips(in_csv$destination_fips))
+  b_key <- paste(canon_fips(out_csv$origin_fips), canon_fips(out_csv$destination_fips))
+  if (!setequal(a_key, b_key)) stop("Inflow and outflow route pairs differ in ", period)
+  b <- out_csv[match(a_key, b_key), , drop = FALSE]
+  for (field in c("tax_returns", "exemptions")) {
+    x <- as_number(in_csv[[field]])
+    y <- as_number(b[[field]])
+    if (!isTRUE(all.equal(x, y, check.attributes = FALSE)))
+      stop("IRS inflow/outflow counts disagree for ", field, " in ", period)
+  }
+  # Two historic pairs have AGI differences of $1,000 between source views.
+  # Canonical inflow AGI is retained without double-counting either view.
+  flows <- data.frame(
+    period = period,
+    period_label = unname(period_labels[[period]]),
+    origin_state = in_csv$origin_state,
+    destination_state = in_csv$destination_state,
+    origin_fips = canon_fips(in_csv$origin_fips),
+    destination_fips = canon_fips(in_csv$destination_fips),
+    returns = as_number(in_csv$tax_returns),
+    individuals = as_number(in_csv$exemptions),
+    agi_thousands = as_number(in_csv$agi_thousands),
+    stringsAsFactors = FALSE
+  )
+  # D.C. is in the source flow universe; it is a legitimate migration partner.
+  # Limit map/summary metrics to the 50 states using pop$fips.
+  all_geographies <- union(flows$origin_fips, flows$destination_fips)
+  stopifnot(length(all_geographies) == 51L)
+  # Lesson 7: summarize each state's incoming and outgoing routes separately.
+  incoming <- flows %>%
+    group_by(destination_fips) %>%
+    summarize(
+      inflow_returns = sum(returns, na.rm = TRUE),
+      inflow_people = sum(individuals, na.rm = TRUE),
+      missing_in = 50L - sum(is.finite(individuals))
+    )
+  outgoing <- flows %>%
+    group_by(origin_fips) %>%
+    summarize(
+      outflow_returns = sum(returns, na.rm = TRUE),
+      outflow_people = sum(individuals, na.rm = TRUE),
+      missing_out = 50L - sum(is.finite(individuals))
+    )
+  # Lesson 10: keep the 50 states, with D.C. still counted as a route partner.
+  summary <- pop %>%
+    select(fips, population_2020) %>%
+    left_join(incoming, by = c("fips" = "destination_fips")) %>%
+    left_join(outgoing, by = c("fips" = "origin_fips"))
+  
+  # A completely absent state has zero reported totals and 50 missing routes.
+  summary$inflow_returns[is.na(summary$inflow_returns)] <- 0
+  summary$outflow_returns[is.na(summary$outflow_returns)] <- 0
+  summary$inflow_people[is.na(summary$inflow_people)] <- 0
+  summary$outflow_people[is.na(summary$outflow_people)] <- 0
+  summary$missing_in[is.na(summary$missing_in)] <- 50L
+  summary$missing_out[is.na(summary$missing_out)] <- 50L
+  summary$period <- period
+  # Lesson 6: calculate new variables with mutate().
+  summary <- summary %>%
+    mutate(
+      net_people = inflow_people - outflow_people,
+      net_rate = 1000 * net_people / population_2020,
+      in_rate = 1000 * inflow_people / population_2020,
+      out_rate = 1000 * outflow_people / population_2020,
+      incomplete = (missing_in + missing_out) > 0L
+    ) %>%
+    select(fips, period, inflow_returns, outflow_returns,
+           inflow_people, outflow_people, net_people, net_rate,
+           in_rate, out_rate, missing_in, missing_out, incomplete) %>%
+    as.data.frame()
+  list(totals = summary, flows = flows)
+}
+periods <- c("1920", "2021", "2122", "2223")
+irs_totals <- data.frame()
+irs_flows <- data.frame()
+for (period in periods) {
+  period_data <- load_irs_period(period)
+  irs_totals <- bind_rows(irs_totals, period_data$totals)
+  irs_flows <- bind_rows(irs_flows, period_data$flows)
+}
+stopifnot(nrow(irs_totals) == 200L)
+
+# State abbreviations, FIPS, and all original state names remain unmodified.
+
+# --------------- UI HELPERS / METRIC DEFINITIONS ---------------
+metric_labels <- c(
+  net_rate = "Net migration proxy per 1,000",
+  in_rate = "Incoming migration proxy per 1,000",
+  out_rate = "Outgoing migration proxy per 1,000",
+  net_people = "Net migration proxy (N2)",
+  inflow_people = "Incoming migration proxy (N2)",
+  outflow_people = "Outgoing migration proxy (N2)",
+  population_growth_pct = "Population growth, 2020–2025 (%)",
+  median_income = "Median household income ($)",
+  median_home_value = "Median home value ($)",
+  home_income_ratio = "Median home value / household income",
+  median_rent = "Median gross rent ($/month)",
+  median_rent_pct = "ACS median gross rent / household income (%)",
+  unemployment_pct = "ACS unemployment rate (%)",
+  poverty_pct = "ACS poverty rate (%)",
+  commute_minutes = "Average commute (minutes)"
+)
+pretty_choices <- function(keys) {
+  stats::setNames(keys, unname(metric_labels[keys]))
+}
+x_choices <- pretty_choices(c(
+  "median_income", "median_home_value", "home_income_ratio",
+  "median_rent", "median_rent_pct", "unemployment_pct", "poverty_pct",
+  "commute_minutes"
+))
+y_choices <- pretty_choices(c(
+  "net_rate", "in_rate", "out_rate", "net_people", "population_growth_pct"
+))
+map_choices <- pretty_choices(c(
+  "net_rate", "net_people", "in_rate", "out_rate",
+  "population_growth_pct", "median_income", "median_home_value",
+  "unemployment_pct", "poverty_pct", "median_rent_pct"
+))
+trend_choices <- c(
+  "Population change: 2020 vs. 2025 only" = "pop_index",
+  pretty_choices(c("net_people", "net_rate", "inflow_people", "outflow_people",
+                   "median_income", "median_home_value", "median_rent",
+                   "median_rent_pct", "unemployment_pct", "poverty_pct",
+                   "commute_minutes"))
+)
+state_choices <- stats::setNames(pop$abbr, pop$state)
+
+add_metric <- function(d, key) {
+  if (key == "home_income_ratio") {
+    d$value <- d$median_home_value / d$median_income
+  } else {
+    d$value <- d[[key]]
+  }
+  d$value[!is.finite(d$value)] <- NA_real_
+  d
+}
+fmt_num <- function(x, digits = 0) {
+  ifelse(is.na(x), "N/A", formatC(x, format = "f", digits = digits,
+                                  big.mark = ","))
+}
+fmt_signed <- function(x, digits = 1) {
+  ifelse(is.na(x), "N/A", paste0(ifelse(x > 0, "+", ""), fmt_num(x, digits)))
+}
+fmt_metric <- function(x, key) {
+  if (is.na(x)) return("N/A")
+  if (key %in% c("median_income", "median_home_value", "median_rent"))
+    return(paste0("$", fmt_num(x)))
+  if (key %in% c("population_growth_pct", "median_rent_pct",
+                 "unemployment_pct", "poverty_pct"))
+    return(paste0(fmt_num(x, 2), "%"))
+  if (key %in% c("net_people", "inflow_people", "outflow_people"))
+    return(fmt_signed(x, 0))
+  fmt_signed(x, 2)
+}
+
+ui_card <- function(title, ..., subtitle = NULL) {
+  div(class = "atlas-card", h3(title),
+      if (!is.null(subtitle)) p(class = "atlas-sub", subtitle), ...)
+}
+stat_box <- function(label, value, detail = "") {
+  div(class = "stat-card", div(class = "stat-label", label),
+      div(class = "stat-value", value), div(class = "stat-sub", detail))
+}
+
+# Team biographies and headshots. The source image assets are also provided
+# in www/ for easy editing, but the app works without that folder.
+team_card <- function(photo_src, name, discipline, bio, linkedin) {
+  div(class = "team-card",
+      div(class = "team-photo-shell",
+          tags$img(class = "team-photo", src = paste0("data:image/png;base64,", team_photo_data[[photo_src]]), alt = name)
+      ),
+      h3(class = "team-name", name),
+      div(class = "team-discipline", discipline),
+      p(class = "team-bio", bio),
+      tags$a(class = "team-link", href = linkedin,
+             target = "_blank", rel = "noopener noreferrer",
+             "View LinkedIn profile ↗")
+  )
+}
+
+app_css <- "
+body {background:#f5f7f7;color:#1d3440;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;}
+.atlas-shell {display:flex;min-height:100vh;margin:-15px;align-items:stretch;}
+.atlas-sidebar {width:238px;min-width:238px;padding:25px 15px 20px;background:#112a39;color:#e1eeee;position:sticky;top:0;height:100vh;overflow-y:auto;z-index:1000;}
+.atlas-brand {font-weight:800;font-size:22px;line-height:1.14;color:white;padding:7px 8px 23px;}
+.atlas-brand small {display:block;color:#a2c2c8;font-weight:600;font-size:11px;letter-spacing:1px;margin-top:10px;}
+.atlas-sidebar .action-button {background:transparent;border:0;border-radius:10px;color:#e1eeee;text-align:left;width:100%;padding:12px;margin:2px 0;box-shadow:none;font-weight:650;}
+.atlas-sidebar .action-button:hover,.atlas-sidebar .action-button:focus {background:#244353;color:white;}
+.atlas-sidebar label {color:#c1d3d6!important;font-size:11px;font-weight:750;letter-spacing:.35px;}
+.atlas-sidebar .form-group {margin-bottom:14px;}
+.atlas-sidebar .selectize-input {color:#223c48;}
+.atlas-sidebar hr {border-color:#36505e;margin:16px 0;}
+.atlas-sidebar .atlas-side-note {color:#a2c2c8;font-size:11px;line-height:1.6;}
+.atlas-main {flex:1;min-width:0;padding:28px 35px 48px;}
+.atlas-main h1 {font-size:34px;font-weight:800;letter-spacing:-1px;margin:5px 0 8px;}
+.atlas-main h3 {font-size:18px;font-weight:750;margin-top:0;margin-bottom:8px;}
+.atlas-lede,.atlas-sub {color:#6d8490;margin-bottom:20px;line-height:1.5;}
+.atlas-sub {font-size:12px;margin:-3px 0 16px;}
+.atlas-card,.stat-card {background:white;border:1px solid #e2eaea;border-radius:15px;padding:22px;margin:0 0 18px;box-shadow:0 2px 12px rgba(10,36,44,.03);}
+.kpi-grid {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:18px;}
+.stat-card {min-height:112px;margin-bottom:0;}
+.stat-label {font-size:12px;color:#667f8a;font-weight:600;}
+.stat-value {font-size:25px;font-weight:800;color:#173d49;margin-top:7px;}
+.stat-sub {font-size:11px;color:#8499a0;margin-top:6px;}
+.two-panels {display:grid;grid-template-columns:minmax(0,1.55fr) minmax(320px,1fr);gap:17px;align-items:start;}
+.two-even {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:17px;align-items:start;}
+.shiny-input-container {max-width:100%;}
+.form-control {border-radius:9px;border-color:#d3e0e3;}
+.btn-atlas,.btn-default {border-radius:9px;}
+.atlas-alert {background:#f2f7f6;border-left:3px solid #208b84;padding:12px 14px;color:#506c78;font-size:12px;border-radius:5px;margin-top:10px;}
+.atlas-badge {font-size:11px;font-weight:700;color:#0a6b68;background:#e9f4f2;display:inline-block;border-radius:20px;padding:4px 8px;}
+.atlas-control-row {display:flex;gap:15px;align-items:flex-end;flex-wrap:wrap;}
+.atlas-control-row .form-group {min-width:190px;flex:1;}
+.atlas-main table.dataTable thead th {font-size:12px;color:#526d78;}
+.atlas-main .dataTables_wrapper {font-size:12px;}
+/* USA choropleth: clear inputs and a generous full-width geographic canvas. */
+.atlas-map-controls {max-width:390px;margin:3px 0 0;}
+.atlas-map-controls label {font-size:11px;font-weight:800;letter-spacing:.6px;color:#567482;}
+.atlas-map-note {font-size:12px;color:#6d8490;margin:0 0 9px;line-height:1.5;}
+.atlas-map-note strong {color:#244355;}
+.js-plotly-plot .plotly .modebar {opacity:.35;transition:opacity .15s;}
+.js-plotly-plot .plotly .modebar:hover {opacity:1;}
+
+
+/* About Us: three original teammate portraits, precisely circular-clipped. */
+.about-eyebrow {font-size:11px;letter-spacing:2px;font-weight:800;text-transform:uppercase;color:#19857f;margin:0 0 8px;}
+.team-grid {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;margin:10px 0 22px;align-items:stretch;}
+.team-card {background:white;border:1px solid #e2eaea;border-radius:15px;box-shadow:0 2px 12px rgba(10,36,44,.03);padding:27px;display:flex;flex-direction:column;min-height:420px;align-items:flex-start;}
+.team-photo-shell {width:170px;height:170px;border-radius:50%;overflow:hidden;border:6px solid #f5f7f7;box-shadow:0 2px 12px rgba(10,36,44,.08);background:#eef3f4;margin:0 auto 22px;align-self:center;}
+.team-photo {width:100%;height:100%;display:block;object-fit:cover;object-position:center center;}
+.team-card .team-name {font-size:22px;font-weight:800;margin:0 0 4px;letter-spacing:-.6px;color:#193c47;}
+.team-discipline {color:#15807a;font-size:12px;font-weight:800;letter-spacing:.2px;margin-bottom:12px;}
+.team-card .team-bio {font-size:13px;line-height:1.75;color:#5c7581;margin-bottom:20px;}
+.team-link {margin-top:auto;display:inline-block;align-self:flex-start;background:#0c7872;color:white!important;text-decoration:none!important;border-radius:9px;padding:11px 14px;font-size:12px;font-weight:750;}
+.team-link:hover,.team-link:focus {background:#085e5a;color:white!important;}
+@media(max-width:1120px){.team-grid{grid-template-columns:1fr 1fr;}}
+@media(max-width:780px){.team-grid{grid-template-columns:1fr;}.team-card{min-height:0;}}
+@media(max-width:700px) {.atlas-shell{display:block}.atlas-sidebar{position:relative;width:100%;height:auto;min-width:0;padding:16px}.atlas-main{padding:18px}.atlas-main h1{font-size:27px}.kpi-grid{grid-template-columns:repeat(2,1fr)}}
+"
+
+atlas_definition <- paste(
+  "Migration proxy = IRS exemptions (N2), representing people on tax returns,",
+  "not all movers. Net = incoming minus outgoing.",
+  "All per-1,000 values divide N2 by the state's 2020 population and multiply by 1,000.")
+atlas_irs_keys <- c("net_rate", "in_rate", "out_rate", "net_people",
+                    "inflow_people", "outflow_people")
+
+
+# Presentation extension: CSS keeps the layout; JavaScript highlights the active tab.
+app_css <- paste0(app_css, "
+.atlas-sidebar .action-button.atlas-active {background:#28605f;color:#fff;border-left:4px solid #72d5c5;padding-left:8px;}
+.atlas-sidebar .action-button:focus-visible {outline:3px solid #b6e7de;outline-offset:2px;}
+.atlas-period-note {font-size:12px;line-height:1.6;color:#405e6c;margin:4px 0 12px;overflow-wrap:anywhere;}
+.atlas-period-note .atlas-definition {display:block;font-size:11px;color:#586f7b;margin-top:4px;}
+.atlas-period-note .atlas-warning {display:block;color:#8a471e;font-weight:650;margin-top:5px;}
+.two-even > *, .two-panels > * {min-width:0;}
+.atlas-card {min-width:0;}
+.atlas-main .dataTables_wrapper {width:100%;overflow-x:auto;}
+@media(max-width:1100px){.two-even,.two-panels{grid-template-columns:minmax(0,1fr);}.kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
+@media(max-width:700px){.atlas-card{padding:15px;}.atlas-control-row{display:block;}.atlas-control-row .form-group{min-width:0;width:100%;}.atlas-sidebar{position:relative;z-index:auto;}.stat-value{font-size:22px;}}
+@media(max-width:420px){.kpi-grid{grid-template-columns:1fr;}.atlas-main{padding:12px;}}")
+
+# --------------- SHINY SERVER: REACTIVE DATA AND PLOTS ---------------
+server <- function(input, output, session) {
+  observeEvent(input$go_overview, {
+    updateTabsetPanel(session, "page", selected = "overview")
+  })
+  observeEvent(input$go_explore, {
+    updateTabsetPanel(session, "page", selected = "explore")
+  })
+  observeEvent(input$go_routes, {
+    updateTabsetPanel(session, "page", selected = "routes")
+  })
+  observeEvent(input$go_compare, {
+    updateTabsetPanel(session, "page", selected = "compare")
+  })
+  observeEvent(input$go_trends, {
+    updateTabsetPanel(session, "page", selected = "trends")
+  })
+  observeEvent(input$go_about, {
+    updateTabsetPanel(session, "page", selected = "about")
+  })
+  observeEvent(input$go_methods, {
+    updateTabsetPanel(session, "page", selected = "methods")
+  })
+  
+  selected_state <- reactiveVal("SC")
+  observeEvent(input$route_state, {
+    if (input$route_state %in% pop$abbr) selected_state(input$route_state)
+  }, ignoreInit = TRUE)
+  
+  # Lessons 6 and 10: filter the years, then join tables by state FIPS.
+  view_data <- reactive({
+    selected_acs <- filter(acs_all, acs_year == as.integer(input$acs_year))
+    selected_irs <- filter(irs_totals, period == input$irs_period)
+    d <- pop %>%
+      inner_join(selected_acs, by = "fips") %>%
+      inner_join(selected_irs, by = "fips") %>%
+      arrange(state)
+    validate(need(nrow(d) == 50, "Expected 50 states in the merged dataset."))
+    d
+  })
+  
+  output$overview_kpis <- renderUI({
+    d <- view_data()
+    highest <- d[which.max(d$net_rate), ]
+    lowest <- d[which.min(d$net_rate), ]
+    fastest <- d[which.max(d$population_growth_pct), ]
+    div(class = "kpi-grid",
+        stat_box("States with reported net gains",
+                 paste0(sum(d$net_people > 0), " / 50"),
+                 unname(period_labels[[input$irs_period]])),
+        stat_box("Largest reported net gain / 1,000", fmt_signed(highest$net_rate), highest$state),
+        stat_box("Largest reported net loss / 1,000", fmt_signed(lowest$net_rate), lowest$state),
+        stat_box("Fastest population growth", paste0(fmt_num(fastest$population_growth_pct, 2), "%"),
+                 paste(fastest$state, "· 2020–2025"))
+    )
+  })
+  
+  # Genuine state-border choropleth; no manually positioned square tiles.
+  # Blue ramp matches the reference; net migration uses a centered two-sided scale.
+  output$state_map <- renderPlotly({
+    d <- add_metric(view_data(), input$map_metric)
+    req(nrow(d) == 50L, input$map_metric)
+    
+    metric_label <- unname(metric_labels[[input$map_metric]])
+    hover_values <- character(nrow(d))
+    for (i in seq_len(nrow(d))) {
+      hover_values[i] <- fmt_metric(d$value[i], input$map_metric)
+    }
+    d$map_hover <- paste0(
+      "<b>", d$state, " (", d$abbr, ")</b>",
+      "<br>", metric_label, ": <b>",
+      hover_values,
+      "</b>",
+      "<br>Reported net exemptions: ", fmt_signed(d$net_people, 0),
+      ifelse(d$incomplete, " (partial)", ""),
+      "<br>2020–2025 population growth: ",
+      fmt_num(d$population_growth_pct, 2), "%"
+    )
+    
+    # A diverging palette is appropriate when positive/negative direction matters.
+    is_net <- input$map_metric %in% c("net_rate", "net_people")
+    if (is_net) {
+      spread <- max(abs(d$value), na.rm = TRUE)
+      if (!is.finite(spread) || spread <= 0) spread <- 1
+      scale_min <- -spread
+      scale_max <- spread
+      map_colors <- list(
+        c(0, "#d98878"), c(0.5, "#f0f4f8"), c(1, "#2459aa")
+      )
+    } else {
+      values <- d$value[is.finite(d$value)]
+      req(length(values) > 0L)
+      scale_min <- min(values)
+      scale_max <- max(values)
+      if (scale_min == scale_max) scale_max <- scale_min + 1
+      map_colors <- list(
+        c(0, "#e6f0ff"),
+        c(0.25, "#b8d1fa"),
+        c(0.5, "#83b0f1"),
+        c(0.75, "#5287d7"),
+        c(1, "#28559f")
+      )
+    }
+    
+    legend_title <- switch(
+      input$map_metric,
+      "net_rate" = "Net per 1k",
+      "population_growth_pct" = "Growth (%)",
+      "net_people" = "Net N2", "in_rate" = "In per 1k",
+      "out_rate" = "Out per 1k", "median_home_value" = "Home ($)",
+      "poverty_pct" = "Poverty (%)", "median_rent_pct" = "Rent (%)",
+      "median_income" = "Income ($)",
+      "unemployment_pct" = "Unemployment (%)",
+      "Value"
+    )
+    
+    plot_ly(
+      data = d,
+      type = "choropleth",
+      locationmode = "USA-states",
+      locations = ~abbr,
+      z = ~value,
+      text = ~map_hover,
+      customdata = ~abbr,
+      key = ~abbr,
+      hovertemplate = "%{text}<extra></extra>",
+      colorscale = map_colors,
+      zmin = scale_min,
+      zmax = scale_max,
+      marker = list(line = list(color = "#ffffff", width = 0.85)),
+      colorbar = list(
+        title = list(text = legend_title, side = "top"),
+        thickness = 15, len = 0.67, x = 1.01, y = 0.5,
+        tickfont = list(size = 11, color = "#556b7a"),
+        outlinewidth = 0
+      ),
+      source = "state_choropleth",
+      showlegend = FALSE
+    ) %>%
+      layout(
+        geo = list(
+          scope = "usa",
+          projection = list(type = "albers usa"),
+          showlakes = FALSE,
+          showcoastlines = FALSE,
+          showland = FALSE,
+          bgcolor = "rgba(0,0,0,0)"
+        ),
+        margin = list(l = 0, r = 95, t = 8, b = 0),
+        paper_bgcolor = "rgba(0,0,0,0)",
+        plot_bgcolor = "rgba(0,0,0,0)",
+        font = list(family = "Arial, sans-serif", color = "#254252")
+      ) %>%
+      config(displaylogo = FALSE, responsive = TRUE, scrollZoom = FALSE,
+             modeBarButtonsToRemove = c("lasso2d", "select2d"))
+  })
+  
+  output$map_source_note <- renderUI({
+    n <- sum(view_data()$incomplete)
+    div(class = "atlas-map-note", "Click a state for details.",
+        if (input$map_metric %in% atlas_irs_keys && n > 0)
+          paste(n, "states have partial IRS totals; hover over states for flags."))
+  })
+  
+  # The existing selected-state summary and route selector keep working.
+  # Choropleth click payloads can identify the state by location or customdata.
+  observeEvent(event_data("plotly_click", source = "state_choropleth"), {
+    e <- event_data("plotly_click", source = "state_choropleth")
+    if (is.null(e) || nrow(e) == 0L) return()
+    
+    code <- NULL
+    for (field in c("location", "customdata", "key")) {
+      if (field %in% names(e)) {
+        candidate <- as.character(e[[field]][1])
+        if (length(candidate) == 1L && !is.na(candidate) &&
+            candidate %in% pop$abbr) {
+          code <- candidate
+          break
+        }
+      }
+    }
+    if (!is.null(code)) {
+      selected_state(code)
+      updateSelectInput(session, "route_state", selected = code)
+    }
+  })
+  
+  output$selected_details <- renderUI({
+    d <- view_data()
+    s <- filter(d, abbr == selected_state())
+    if (!nrow(s)) return(NULL)
+    div(class = "atlas-alert",
+        tags$b(paste0(s$state, " (", s$abbr, ")")), tags$br(),
+        "Reported net IRS exemptions: ", tags$b(fmt_signed(s$net_people, 0)), " · ",
+        "2020–25 growth: ", tags$b(paste0(fmt_signed(s$population_growth_pct, 2), "%")),
+        if (s$incomplete) tags$span(" · Incomplete route data: ",
+                                    tags$b(s$missing_in + s$missing_out), " suppressed/missing inbound or outbound records")
+    )
+  })
+  
+  output$net_rank_plot <- renderPlot({
+    d <- view_data()
+    d <- arrange(d, desc(net_rate))
+    take <- bind_rows(head(d, 6), tail(d, 6))
+    take$label <- paste0(take$state, ifelse(take$incomplete, " *", ""))
+    take$kind <- ifelse(take$net_rate >= 0, "Net gain", "Net loss")
+    ggplot(take, aes(reorder(label, net_rate), net_rate, fill = kind)) +
+      geom_bar(stat = "identity", width = .7) + coord_flip() +
+      scale_fill_manual(values = c("Net gain" = "#16887e", "Net loss" = "#dd8766")) +
+      labs(x = NULL, y = metric_labels[["net_rate"]], caption = "* Partial IRS route data") +
+      theme_minimal(base_size = 11) +
+      theme(legend.position = "none", panel.grid.major.y = element_blank())
+  })
+  
+  scatter_data <- reactive({
+    d <- add_metric(view_data(), input$x_metric)
+    names(d)[names(d) == "value"] <- "x"
+    d <- add_metric(d, input$y_metric)
+    names(d)[names(d) == "value"] <- "y"
+    d <- filter(d, is.finite(x), is.finite(y))
+    d$tip <- paste0(d$state, "<br>", metric_labels[[input$x_metric]],
+                    ": ", round(d$x, 2), "<br>", metric_labels[[input$y_metric]],
+                    ": ", round(d$y, 2))
+    d
+  })
+  
+  output$scatter_plot <- renderPlotly({
+    d <- scatter_data()
+    validate(need(nrow(d) >= 3 && sd(d$x) > 0 && sd(d$y) > 0,
+                  "Not enough variation for a scatterplot."))
+    partial <- (input$y_metric %in% atlas_irs_keys) & d$incomplete
+    d$tip <- paste0(d$tip, "<br>", atlas_period(input$x_metric), "<br>", atlas_period(input$y_metric),
+                    if (input$y_metric %in% atlas_irs_keys)
+                      ifelse(partial, paste0("<br><b>Partial IRS totals:</b> ", d$missing_in,
+                                             " incoming and ", d$missing_out, " outgoing routes missing/unreported"),
+                             "<br>All 50 inbound and 50 outbound N2 routes reported") else "")
+    fit <- lm(y ~ x, data = d)
+    line_d <- data.frame(x = range(d$x))
+    line_d$y <- predict(fit, newdata = line_d)
+    p <- plot_ly(d, x = ~x, y = ~y, text = ~tip, customdata = ~abbr,
+                 type = "scatter", mode = "markers", hoverinfo = "text",
+                 marker = list(color = ifelse(d$abbr == selected_state(), "#da7b55", "#16887e"),
+                               symbol = ifelse(partial, "diamond-open", "circle"), size = 11,
+                               line = list(width = 1.5)), source = "scatter", showlegend = FALSE)
+    p <- add_lines(p, data = line_d, x = ~x, y = ~y, inherit = FALSE,
+                   hoverinfo = "skip", showlegend = FALSE,
+                   line = list(color = "#dd8766", dash = "dash", width = 3))
+    layout(p, xaxis = list(title = metric_labels[[input$x_metric]], automargin = TRUE),
+           yaxis = list(title = metric_labels[[input$y_metric]], automargin = TRUE),
+           margin = list(l = 70, r = 15, b = 85, t = 15),
+           paper_bgcolor = "white", plot_bgcolor = "white") %>%
+      config(displaylogo = FALSE, responsive = TRUE)
+  })
+  
+  observeEvent(event_data("plotly_click", source = "scatter"), {
+    e <- event_data("plotly_click", source = "scatter")
+    if (!is.null(e) && "customdata" %in% names(e)) {
+      code <- as.character(e$customdata[1])
+      if (code %in% pop$abbr) selected_state(code)
+    }
+  })
+  
+  output$scatter_statistics <- renderUI({
+    d <- scatter_data()
+    if (nrow(d) < 4 || sd(d$x) == 0 || sd(d$y) == 0) {
+      return(div(class = "atlas-alert", "Insufficient data for correlation."))
+    }
+    test <- cor.test(d$x, d$y, method = "pearson")
+    r <- unname(test$estimate)
+    label <- if (abs(r) < .1) "Near-zero linear" else if (abs(r) < .3) "Weak" else if (abs(r) < .5) "Moderate" else "Relatively strong"
+    div(class = "kpi-grid",
+        stat_box("Pearson correlation (r)", fmt_signed(r, 3)),
+        stat_box("Simple linear R²", fmt_num(r^2, 3)),
+        stat_box("P-value", format.pval(test$p.value, digits = 3)),
+        stat_box("States plotted", as.character(nrow(d)), label)
+    )
+  })
+  
+  output$correlation_table <- renderDT({
+    d <- view_data()
+    k <- input$y_metric
+    ys <- add_metric(d, k)$value
+    all_x <- unname(x_choices)
+    cor_vals <- rep(NA_real_, length(all_x))
+    for (i in seq_along(all_x)) {
+      xs <- add_metric(d, all_x[i])$value
+      good <- is.finite(xs) & is.finite(ys)
+      if (sum(good) >= 4 && sd(xs[good]) > 0 && sd(ys[good]) > 0) {
+        cor_vals[i] <- cor(xs[good], ys[good])
+      }
+    }
+    tbl <- data.frame(
+      Factor = unname(metric_labels[all_x]),
+      `Pearson r` = round(cor_vals, 3),
+      `Absolute r` = round(abs(cor_vals), 3), check.names = FALSE
+    )
+    tbl <- arrange(tbl, desc(`Absolute r`))
+    datatable(tbl, rownames = FALSE,
+              options = list(pageLength = 9, dom = "t", ordering = FALSE))
+  })
+  
+  output$download_scatter <- downloadHandler(
+    filename = function() paste0("scatter_", input$x_metric, "_vs_", input$y_metric, ".csv"),
+    content = function(file) {
+      d <- scatter_data()[, c("fips", "state", "abbr", "x", "y")]
+      names(d)[4:5] <- c(input$x_metric, input$y_metric)
+      write.csv(d, file, row.names = FALSE)
+    }
+  )
+  
+  route_data <- reactive({
+    d <- atlas_all_routes()
+    d %>% filter(is.finite(individuals)) %>% head(10)
+  })
+  
+  output$route_kpis <- renderUI({
+    s <- view_data()
+    s <- filter(s, abbr == input$route_state)
+    if (!nrow(s)) return(NULL)
+    div(class = "kpi-grid",
+        stat_box("Incoming migration proxy (N2)", fmt_num(s$inflow_people)),
+        stat_box("Outgoing migration proxy (N2)", fmt_num(s$outflow_people)),
+        stat_box("Net reported exemptions", fmt_signed(s$net_people, 0),
+                 if (s$incomplete) "Partial: missing/suppressed routes" else "All 50 routes reported"),
+        stat_box("Net per 1,000 (2020 base)", fmt_signed(s$net_rate, 2))
+    )
+  })
+  
+  output$route_bar <- renderPlot({
+    d <- route_data()
+    validate(need(nrow(d) > 0, "No valid interstate route records available."))
+    ggplot(d, aes(x = reorder(other_state, individuals), y = individuals)) +
+      geom_bar(stat = "identity", fill = if (input$route_direction == "in") "#16887e" else "#dd8766",
+               width = .75) + coord_flip() +
+      labs(x = NULL, y = "Reported IRS exemptions (N2)") +
+      scale_y_continuous(labels = function(x) format(x, big.mark = ",", trim = TRUE)) +
+      theme_minimal(base_size = 11) +
+      theme(panel.grid.major.y = element_blank(),
+            plot.margin = margin(10, 15, 10, 5))
+  })
+  
+  output$route_table <- renderDT({
+    d <- atlas_all_routes()
+    tbl <- data.frame(
+      `From → To` = paste(d$origin_state, "→", d$destination_state),
+      `Returns (N1)` = d$returns, `Exemptions (N2)` = d$individuals,
+      `AGI ($ millions)` = round(d$agi_thousands / 1000, 1),
+      Status = ifelse(!is.finite(d$individuals), "N2 unreported",
+                      ifelse(!is.finite(d$returns) | !is.finite(d$agi_thousands),
+                             "Other field unreported", "Reported")), check.names = FALSE)
+    datatable(tbl, rownames = FALSE, options = list(pageLength = 10,
+                                                    lengthMenu = c(10, 25, 50), scrollX = TRUE, dom = "lftip", order = list(),
+                                                    columnDefs = list(list(targets = "_all", defaultContent = "N/A"))))
+  })
+  
+  output$state_comparison <- renderDT({
+    d <- view_data()
+    a <- filter(d, abbr == input$state_a)
+    b <- filter(d, abbr == input$state_b)
+    req(nrow(a) == 1L, nrow(b) == 1L)
+    keys <- c("net_rate", "in_rate", "out_rate", "net_people",
+              "inflow_people", "outflow_people", "population_growth_pct",
+              "median_income", "median_home_value", "median_rent",
+              "median_rent_pct", "unemployment_pct", "poverty_pct",
+              "commute_minutes")
+    first_values <- character(length(keys))
+    second_values <- character(length(keys))
+    for (i in seq_along(keys)) {
+      first_values[i] <- fmt_metric(a[[keys[i]]], keys[i])
+      second_values[i] <- fmt_metric(b[[keys[i]]], keys[i])
+    }
+    tbl <- data.frame(
+      Measure = unname(metric_labels[keys]),
+      `First state` = first_values,
+      `Second state` = second_values,
+      check.names = FALSE
+    )
+    tbl <- rbind(tbl, data.frame(
+      Measure = "Suppressed/missing IRS route records (in+out)",
+      `First state` = as.character(a$missing_in + a$missing_out),
+      `Second state` = as.character(b$missing_in + b$missing_out),
+      check.names = FALSE
+    ))
+    names(tbl)[2:3] <- c(a$state, b$state)
+    datatable(tbl, rownames = FALSE,
+              options = list(pageLength = 18, dom = "t", ordering = FALSE))
+  })
+  
+  trend_data <- reactive({
+    chosen <- c(input$trend_state_a, input$trend_state_b)
+    key <- input$trend_metric
+    if (key == "pop_index") {
+      states <- filter(pop, abbr %in% chosen)
+      baseline <- data.frame(state = states$state, year = 2020, value = 0)
+      endpoint <- data.frame(state = states$state, year = 2025,
+                             value = states$population_growth_pct)
+      # Only two measured endpoints; no invented annual observations.
+      return(bind_rows(baseline, endpoint) %>% arrange(state, year))
+    }
+    if (key %in% c("net_people", "net_rate", "inflow_people", "outflow_people")) {
+      migration <- irs_totals %>%
+        left_join(select(pop, fips, state, abbr), by = "fips") %>%
+        filter(abbr %in% chosen)
+      end_years <- c("1920" = 2020L, "2021" = 2021L,
+                     "2122" = 2022L, "2223" = 2023L)
+      return(data.frame(
+        state = migration$state,
+        year = unname(end_years[migration$period]),
+        value = migration[[key]], incomplete = migration$incomplete
+      ))
+    }
+    survey <- acs_all %>%
+      left_join(select(pop, fips, state, abbr), by = "fips") %>%
+      filter(abbr %in% chosen)
+    data.frame(state = survey$state, year = survey$acs_year,
+               value = survey[[key]])
+  })
+  
+  output$trend_plot <- renderPlotly({
+    d <- trend_data()
+    d <- filter(d, is.finite(value))
+    validate(need(nrow(d) > 0, "No observations available for this indicator."))
+    key <- input$trend_metric
+    d$partial <- FALSE
+    d$tooltip <- paste0(d$state, " · ", d$year, ": ", fmt_num(d$value, 2))
+    if (key %in% atlas_irs_keys) {
+      m <- left_join(irs_totals, select(pop, fips, state), by = "fips")
+      ends <- c("1920" = 2020L, "2021" = 2021L, "2122" = 2022L, "2223" = 2023L)
+      m$year <- unname(ends[m$period])
+      idx <- match(paste(d$state, d$year), paste(m$state, m$year))
+      stopifnot(!anyNA(idx))
+      d$partial <- m$incomplete[idx]
+      d$tooltip <- paste0(d$state, "<br>IRS ", unname(period_labels[m$period[idx]]),
+                          "<br>", metric_labels[[key]], ": ", fmt_num(d$value, 2),
+                          ifelse(d$partial, paste0("<br>Partial totals: ", m$missing_in[idx],
+                                                   " incoming and ", m$missing_out[idx], " outgoing routes missing/unreported"),
+                                 "<br>All inbound and outbound N2 routes reported"))
+    } else if (key == "pop_index") {
+      d$tooltip <- paste0(d$tooltip, "% change from 2020")
+    } else {
+      d$tooltip <- paste0(d$state, "<br>ACS reference year: ", d$year,
+                          "<br>", metric_labels[[key]], ": ", fmt_num(d$value, 2))
+    }
+    d <- arrange(d, state, year)
+    p <- ggplot(d, aes(year, value, color = state, group = state, text = tooltip)) +
+      geom_line(linewidth = 1.1) + geom_point(aes(shape = partial), size = 3.2) +
+      scale_shape_manual(values = c("FALSE" = 16, "TRUE" = 5),
+                         breaks = c(FALSE, TRUE), labels = c("Complete routes", "Partial routes"),
+                         name = "IRS coverage") +
+      scale_color_manual(values = c("#16887e", "#dd8766")) +
+      scale_x_continuous(breaks = sort(unique(d$year))) +
+      labs(x = if (key %in% atlas_irs_keys) "IRS period end year" else "Year",
+           y = if (key == "pop_index") "Population change from 2020 (%)" else metric_labels[[key]],
+           color = "State") + theme_minimal(base_size = 12) +
+      theme(legend.position = "bottom", panel.grid.minor = element_blank())
+    if (!any(d$partial)) p <- p + guides(shape = "none")
+    ggplotly(p, tooltip = "text", source = "trends") %>%
+      layout(margin = list(l = 75, r = 15, b = 65, t = 15)) %>%
+      config(displaylogo = FALSE, responsive = TRUE)
+  })
+  
+  output$download_master <- downloadHandler(
+    filename = function() paste0("american_migration_clean_", input$irs_period,
+                                 "_ACS", input$acs_year, ".csv"),
+    content = function(file) write.csv(view_data(), file, row.names = FALSE)
+  )
+  # Reporting-period notes and full route records
+  
+  observe({
+    req(input$page)
+    session$sendCustomMessage("atlas-active-page", input$page)
+  })
+  atlas_period <- function(key) {
+    if (key %in% atlas_irs_keys)
+      return(paste("IRS migration:", unname(period_labels[[input$irs_period]])))
+    if (key %in% c("population_growth_pct", "pop_index"))
+      return("Population endpoints: 2020 and 2025")
+    paste("ACS reference year:", input$acs_year,
+          "(confirm survey product and coverage in source metadata)")
+  }
+  atlas_note <- function(keys, extra = NULL) {
+    has_irs <- any(keys %in% atlas_irs_keys)
+    periods <- character(length(keys))
+    for (i in seq_along(keys)) {
+      periods[i] <- atlas_period(keys[i])
+    }
+    div(class = "atlas-period-note",
+        tags$strong(paste(unique(periods), collapse = " | ")),
+        if (has_irs) tags$span(class = "atlas-definition", atlas_definition),
+        if (!is.null(extra)) tags$span(class = "atlas-warning", extra))
+  }
+  atlas_scatter_note <- reactive({
+    d <- scatter_data()
+    has_irs <- input$y_metric %in% atlas_irs_keys
+    extra <- paste("These sources have different reporting windows; the factor is not necessarily measured before migration.",
+                   "Associations do not establish causation.")
+    if (has_irs) extra <- paste(extra, sum(d$incomplete),
+                                "plotted states have partial IRS totals. Open diamonds mark these states; they remain in the fit and correlation.")
+    atlas_note(c(input$x_metric, input$y_metric), extra)
+  })
+  output$atlas_scatter_period <- renderUI(atlas_scatter_note())
+  output$atlas_corr_period <- renderUI(atlas_scatter_note())
+  output$atlas_map_period <- renderUI(atlas_note(input$map_metric))
+  output$atlas_rank_period <- renderUI(atlas_note("net_rate",
+                                                  "* indicates partial IRS totals. Rankings use reported totals, including partial states."))
+  output$atlas_route_period <- renderUI(atlas_note("inflow_people",
+                                                   "Chart: ten largest routes with reported N2. Table: all available route records."))
+  output$atlas_table_period <- renderUI(atlas_note("inflow_people",
+                                                   "Missing values are shown as N/A. Omitted source pairs cannot appear as records."))
+  output$atlas_compare_period <- renderUI(atlas_note(
+    c("net_rate", "median_income", "population_growth_pct")))
+  output$atlas_trend_period <- renderUI({
+    key <- input$trend_metric
+    if (key %in% atlas_irs_keys) {
+      div(class = "atlas-period-note", tags$strong("IRS periods: 2019–2020 through 2022–2023; x-axis shows period end year."),
+          tags$span(class = "atlas-definition", atlas_definition),
+          tags$span(class = "atlas-warning", "Open diamonds mark partial totals; hover for missing-route counts. Sidebar year selections do not filter this chart."))
+    } else if (key == "pop_index") {
+      div(class = "atlas-period-note", tags$strong("Population endpoints: 2020 and 2025 only."),
+          " The connecting line joins the two observations; it does not show annual estimates.")
+    } else {
+      div(class = "atlas-period-note", tags$strong("ACS reference years: 2019–2024."),
+          " Confirm survey coverage in source metadata; estimates may overlap. Dollar values use their survey-year bases. Sidebar year selections do not filter this chart.")
+    }
+  })
+  
+  # The full table and top-ten chart now have deliberately separate datasets.
+  atlas_all_routes <- reactive({
+    d <- filter(irs_flows, period == input$irs_period)
+    f <- pop$fips[match(input$route_state, pop$abbr)]
+    req(length(f) == 1L, !is.na(f))
+    if (input$route_direction == "in") {
+      d <- filter(d, destination_fips == f)
+      d$other_state <- d$origin_state
+    } else {
+      d <- filter(d, origin_fips == f)
+      d$other_state <- d$destination_state
+    }
+    arrange(d, desc(individuals))
+  })
+  
+}
+
+
+# IMAGE DATA APPENDIX
+# The following strings are the existing photos encoded as text, not analysis code.
+# They keep this script portable without needing a separate www folder.
 # --- READY-TO-DISPLAY TEAM HEADSHOTS ---
 # These PNGs were cropped from the three supplied photos. Embedding them as
 # data URIs eliminates the need for a separate www/ directory at runtime.
@@ -2444,6 +3386,7 @@ team_photo_data <- list(
 )
 # ------------------------------------
 
+<<<<<<< HEAD
 # -------------------- LOAD THE 15 PROVIDED CLEAN CSV FILES --------------------
 # Locate supplied CSV files automatically, regardless of whether RStudio starts
 # in the repo root or in the Shiny subfolder.
@@ -2786,15 +3729,24 @@ body {background:#f5f7f7;color:#1d3440;font-family:-apple-system,BlinkMacSystemF
 @media(max-width:780px){.team-grid{grid-template-columns:1fr;}.team-card{min-height:0;}}
 @media(max-width:700px) {.atlas-shell{display:block}.atlas-sidebar{position:relative;width:100%;height:auto;min-width:0;padding:16px}.atlas-main{padding:18px}.atlas-main h1{font-size:27px}.kpi-grid{grid-template-columns:repeat(2,1fr)}}
 "
+=======
+>>>>>>> 733e845 (More recognizable code from class; less AI code for our prototyped app)
 
 ui <- fluidPage(
   tags$head(tags$title("American Migration Atlas — R Shiny"),
-            tags$style(HTML(app_css))),
+            tags$style(HTML(app_css)),
+            tags$script(HTML("$(document).on('shiny:connected', function() {
+  Shiny.addCustomMessageHandler('atlas-active-page', function(page) {
+    $('.atlas-sidebar .action-button').removeClass('atlas-active').removeAttr('aria-current');
+    $('#go_' + page).addClass('atlas-active').attr('aria-current', 'page');
+  });
+});"))),
   div(class = "atlas-shell",
       div(class = "atlas-sidebar",
           div(class = "atlas-brand", "↗ American", tags$br(), "Migration Atlas",
               tags$small("BIOL 1185 · R SHINY")),
-          actionButton("go_overview", "▦  Overview"),
+          actionButton("go_overview", "▦  Overview", class = "atlas-active",
+                       "aria-current" = "page"),
           actionButton("go_explore", "⌁  Explore factors"),
           actionButton("go_routes", "⇄  Migration routes"),
           actionButton("go_compare", "▥  Compare states"),
@@ -2823,25 +3775,28 @@ ui <- fluidPage(
                                            selectInput("map_metric", "COLOR STATES BY",
                                                        choices = map_choices, selected = "net_rate")
                                        ),
+                                       uiOutput("atlas_map_period"),
                                        plotlyOutput("state_map", height = "550px"),
                                        uiOutput("map_source_note"),
                                        uiOutput("selected_details")
                                ),
                                ui_card("States gaining & losing",
-                                       subtitle = "Reported net IRS exemptions per 1,000 people, normalized to 2020 population.",
+                                       subtitle = "Six highest and six lowest reported net migration proxies. * marks partial route data.",
+                                       uiOutput("atlas_rank_period"),
                                        plotOutput("net_rank_plot", height = "440px")
                                )
                       ),
                       tabPanel(title = "Explore factors", value = "explore",
                                h1("Explore the relationships"),
-                               p(class = "atlas-lede", "Choose a potential explanatory factor and a migration or population outcome. Points represent states—not individual movers."),
+                               p(class = "atlas-lede", "Choose a state-level factor and an outcome. Check the reporting periods below; points represent states, not individual movers."),
                                ui_card("Ask your own research question",
                                        div(class = "atlas-control-row",
-                                           selectInput("x_metric", "X-axis: explanatory factor",
+                                           selectInput("x_metric", "X-axis: state-level factor",
                                                        choices = x_choices, selected = "median_rent_pct"),
                                            selectInput("y_metric", "Y-axis: outcome",
                                                        choices = y_choices, selected = "net_rate")
                                        ),
+                                       uiOutput("atlas_scatter_period"),
                                        plotlyOutput("scatter_plot", height = "460px"),
                                        uiOutput("scatter_statistics"),
                                        downloadButton("download_scatter", "Download plotted state data (CSV)"),
@@ -2849,6 +3804,7 @@ ui <- fluidPage(
                                ),
                                ui_card("Compare correlations across factors",
                                        subtitle = "Ranked by absolute Pearson correlation for the currently selected Y-axis outcome.",
+                                       uiOutput("atlas_corr_period"),
                                        DTOutput("correlation_table")
                                )
                       ),
@@ -2866,9 +3822,11 @@ ui <- fluidPage(
                                        uiOutput("route_kpis")
                                ),
                                div(class = "two-even",
-                                   ui_card("Top 10 interstate routes", plotOutput("route_bar", height = "460px")),
-                                   ui_card("Detailed route records",
+                                   ui_card("Top 10 interstate routes", uiOutput("atlas_route_period"),
+                                           plotOutput("route_bar", height = "460px")),
+                                   ui_card("All available route records",
                                            subtitle = "N1 = tax returns; N2 = exemptions (a proxy for represented persons); AGI in millions of dollars.",
+                                           uiOutput("atlas_table_period"),
                                            DTOutput("route_table")
                                    )
                                ),
@@ -2882,6 +3840,7 @@ ui <- fluidPage(
                                            selectInput("state_a", "First state", state_choices, selected = "FL"),
                                            selectInput("state_b", "Second state", state_choices, selected = "CA")
                                        ),
+                                       uiOutput("atlas_compare_period"),
                                        DTOutput("state_comparison")
                                )
                       ),
@@ -2895,6 +3854,7 @@ ui <- fluidPage(
                                            selectInput("trend_state_a", "First state", state_choices, selected = "FL"),
                                            selectInput("trend_state_b", "Second state", state_choices, selected = "CA")
                                        ),
+                                       uiOutput("atlas_trend_period"),
                                        plotlyOutput("trend_plot", height = "480px"),
                                        div(class = "atlas-alert", "ACS estimates may represent overlapping multi-year periods and monetary values use their own survey-year inflation bases. Population is available for 2020 and 2025 only. IRS per-1,000 values use the fixed 2020 population denominator.")
                                )
@@ -2986,705 +3946,6 @@ ui <- fluidPage(
       )
   )
 )
-
-# --------------- SHINY SERVER: REACTIVE DATA AND PLOTS ---------------
-server <- function(input, output, session) {
-  for (page_name in c("overview", "explore", "routes", "compare", "trends", "about", "methods")) {
-    local({
-      tab <- page_name
-      observeEvent(input[[paste0("go_", tab)]], {
-        updateTabsetPanel(session, "page", selected = tab)
-      })
-    })
-  }
-  
-  selected_state <- reactiveVal("SC")
-  observeEvent(input$route_state, {
-    if (input$route_state %in% pop$abbr) selected_state(input$route_state)
-  }, ignoreInit = TRUE)
-  
-  view_data <- reactive({
-    a <- acs_all[acs_all$acs_year == as.integer(input$acs_year), , drop = FALSE]
-    m <- irs_totals[irs_totals$period == input$irs_period, , drop = FALSE]
-    d <- Reduce(function(x, y) merge(x, y, by = "fips"),
-                list(pop, a, m))
-    d <- d[order(d$state), , drop = FALSE]
-    validate(need(nrow(d) == 50, "Expected 50 states in the merged dataset."))
-    d
-  })
-  
-  output$overview_kpis <- renderUI({
-    d <- view_data()
-    highest <- d[which.max(d$net_rate), ]
-    lowest <- d[which.min(d$net_rate), ]
-    fastest <- d[which.max(d$population_growth_pct), ]
-    div(class = "kpi-grid",
-        stat_box("States with reported net gains",
-                 paste0(sum(d$net_people > 0), " / 50"),
-                 unname(period_labels[[input$irs_period]])),
-        stat_box("Largest reported net gain / 1,000", fmt_signed(highest$net_rate), highest$state),
-        stat_box("Largest reported net loss / 1,000", fmt_signed(lowest$net_rate), lowest$state),
-        stat_box("Fastest population growth", paste0(fmt_num(fastest$population_growth_pct, 2), "%"),
-                 paste(fastest$state, "· 2020–2025"))
-    )
-  })
-  
-  # Genuine state-border choropleth; no manually positioned square tiles.
-  # Blue ramp matches the reference; net migration uses a centered two-sided scale.
-  output$state_map <- renderPlotly({
-    d <- add_metric(view_data(), input$map_metric)
-    req(nrow(d) == 50L, input$map_metric)
-    
-    metric_label <- unname(metric_labels[[input$map_metric]])
-    d$map_hover <- paste0(
-      "<b>", d$state, " (", d$abbr, ")</b>",
-      "<br>", metric_label, ": <b>",
-      vapply(seq_len(nrow(d)), function(i)
-        fmt_metric(d$value[i], input$map_metric), character(1)),
-      "</b>",
-      "<br>Reported net exemptions: ", fmt_signed(d$net_people, 0),
-      ifelse(d$incomplete, " (partial)", ""),
-      "<br>2020–2025 population growth: ",
-      fmt_num(d$population_growth_pct, 2), "%"
-    )
-    
-    # A diverging palette is appropriate when positive/negative direction matters.
-    is_net <- input$map_metric %in% c("net_rate", "net_people")
-    if (is_net) {
-      spread <- max(abs(d$value), na.rm = TRUE)
-      if (!is.finite(spread) || spread <= 0) spread <- 1
-      scale_min <- -spread
-      scale_max <- spread
-      map_colors <- list(
-        c(0, "#d98878"), c(0.5, "#f0f4f8"), c(1, "#2459aa")
-      )
-    } else {
-      values <- d$value[is.finite(d$value)]
-      req(length(values) > 0L)
-      scale_min <- min(values)
-      scale_max <- max(values)
-      if (scale_min == scale_max) scale_max <- scale_min + 1
-      map_colors <- list(
-        c(0, "#e6f0ff"),
-        c(0.25, "#b8d1fa"),
-        c(0.5, "#83b0f1"),
-        c(0.75, "#5287d7"),
-        c(1, "#28559f")
-      )
-    }
-    
-    legend_title <- switch(
-      input$map_metric,
-      "net_rate" = "Net per 1k",
-      "population_growth_pct" = "Growth (%)",
-      "net_people" = "Net N2", "in_rate" = "In per 1k",
-      "out_rate" = "Out per 1k", "median_home_value" = "Home ($)",
-      "poverty_pct" = "Poverty (%)", "median_rent_pct" = "Rent (%)",
-      "median_income" = "Income ($)",
-      "unemployment_pct" = "Unemployment (%)",
-      "Value"
-    )
-    
-    plot_ly(
-      data = d,
-      type = "choropleth",
-      locationmode = "USA-states",
-      locations = ~abbr,
-      z = ~value,
-      text = ~map_hover,
-      customdata = ~abbr,
-      key = ~abbr,
-      hovertemplate = "%{text}<extra></extra>",
-      colorscale = map_colors,
-      zmin = scale_min,
-      zmax = scale_max,
-      marker = list(line = list(color = "#ffffff", width = 0.85)),
-      colorbar = list(
-        title = list(text = legend_title, side = "top"),
-        thickness = 15, len = 0.67, x = 1.01, y = 0.5,
-        tickfont = list(size = 11, color = "#556b7a"),
-        outlinewidth = 0
-      ),
-      source = "state_choropleth",
-      showlegend = FALSE
-    ) %>%
-      layout(
-        geo = list(
-          scope = "usa",
-          projection = list(type = "albers usa"),
-          showlakes = FALSE,
-          showcoastlines = FALSE,
-          showland = FALSE,
-          bgcolor = "rgba(0,0,0,0)"
-        ),
-        margin = list(l = 0, r = 95, t = 8, b = 0),
-        paper_bgcolor = "rgba(0,0,0,0)",
-        plot_bgcolor = "rgba(0,0,0,0)",
-        font = list(family = "Arial, sans-serif", color = "#254252")
-      ) %>%
-      config(displaylogo = FALSE, responsive = TRUE, scrollZoom = FALSE,
-             modeBarButtonsToRemove = c("lasso2d", "select2d"))
-  })
-  
-  output$map_source_note <- renderUI({
-    label <- if (input$map_metric %in% c("median_income", "median_home_value",
-                                         "unemployment_pct", "poverty_pct",
-                                         "median_rent_pct")) {
-      paste0("ACS 5-year period: ", as.integer(input$acs_year) - 4L,
-             "–", input$acs_year,
-             " (survey estimate, not a monthly BLS figure)")
-    } else if (input$map_metric == "population_growth_pct") {
-      "Population growth reference: 2020–2025"
-    } else {
-      paste0("IRS migration reference: ", period_labels[[input$irs_period]],
-             "; rates use 2020 population base")
-    }
-    n_partial <- sum(view_data()$incomplete)
-    div(class = "atlas-map-note",
-        tags$strong("Data period: "), label,
-        " · Click any state for details.",
-        if (n_partial > 0L) paste0(" · Data caution: ", n_partial,
-                                   " states have at least one unreported IRS route in this selected period."))
-  })
-  
-  # The existing selected-state summary and route selector keep working.
-  # Choropleth click payloads can identify the state by location or customdata.
-  observeEvent(event_data("plotly_click", source = "state_choropleth"), {
-    e <- event_data("plotly_click", source = "state_choropleth")
-    if (is.null(e) || nrow(e) == 0L) return()
-    
-    code <- NULL
-    for (field in c("location", "customdata", "key")) {
-      if (field %in% names(e)) {
-        candidate <- as.character(e[[field]][1])
-        if (length(candidate) == 1L && !is.na(candidate) &&
-            candidate %in% pop$abbr) {
-          code <- candidate
-          break
-        }
-      }
-    }
-    if (!is.null(code)) {
-      selected_state(code)
-      updateSelectInput(session, "route_state", selected = code)
-    }
-  })
-  
-  output$selected_details <- renderUI({
-    d <- view_data()
-    s <- d[d$abbr == selected_state(), , drop = FALSE]
-    if (!nrow(s)) return(NULL)
-    div(class = "atlas-alert",
-        tags$b(paste0(s$state, " (", s$abbr, ")")), tags$br(),
-        "Reported net IRS exemptions: ", tags$b(fmt_signed(s$net_people, 0)), " · ",
-        "2020–25 growth: ", tags$b(paste0(fmt_signed(s$population_growth_pct, 2), "%")),
-        if (s$incomplete) tags$span(" · Incomplete route data: ",
-                                    tags$b(s$missing_in + s$missing_out), " suppressed/missing inbound or outbound records")
-    )
-  })
-  
-  output$net_rank_plot <- renderPlot({
-    d <- view_data()
-    d <- d[order(d$net_rate, decreasing = TRUE), ]
-    take <- rbind(head(d, 6), tail(d, 6))
-    take$kind <- ifelse(take$net_rate >= 0, "Net gain", "Net loss")
-    ggplot(take, aes(x = reorder(state, net_rate), y = net_rate,
-                     fill = kind)) +
-      geom_col(width = .7) + coord_flip() +
-      scale_fill_manual(values = c("Net gain" = "#16887e", "Net loss" = "#dd8766")) +
-      labs(x = NULL, y = "Net IRS exemptions per 1,000 (2020 population base)") +
-      theme_minimal(base_size = 11) +
-      theme(legend.position = "none", panel.grid.major.y = element_blank(),
-            plot.margin = margin(12, 16, 12, 5))
-  })
-  
-  scatter_data <- reactive({
-    d <- add_metric(view_data(), input$x_metric)
-    names(d)[names(d) == "value"] <- "x"
-    d <- add_metric(d, input$y_metric)
-    names(d)[names(d) == "value"] <- "y"
-    d <- d[is.finite(d$x) & is.finite(d$y), , drop = FALSE]
-    d$tip <- paste0(d$state, "<br>", metric_labels[[input$x_metric]],
-                    ": ", round(d$x, 2), "<br>", metric_labels[[input$y_metric]],
-                    ": ", round(d$y, 2))
-    d
-  })
-  
-  output$scatter_plot <- renderPlotly({
-    d <- scatter_data()
-    validate(need(nrow(d) >= 3 && sd(d$x) > 0 && sd(d$y) > 0,
-                  "Not enough variation for a scatterplot."))
-    fit <- lm(y ~ x, data = d)
-    line_d <- data.frame(x = range(d$x))
-    line_d$y <- predict(fit, newdata = line_d)
-    marker_colors <- ifelse(d$abbr == selected_state(), "#da7b55", "#16887e")
-    p <- plot_ly(
-      data = d, x = ~x, y = ~y, text = ~tip, customdata = ~abbr,
-      type = "scatter", mode = "markers", hoverinfo = "text",
-      marker = list(color = marker_colors, size = 10,
-                    line = list(color = "white", width = 1)),
-      source = "scatter", showlegend = FALSE
-    )
-    p <- add_lines(p, data = line_d, x = ~x, y = ~y,
-                   inherit = FALSE, hoverinfo = "skip", showlegend = FALSE,
-                   line = list(color = "#dd8766", dash = "dash", width = 3))
-    layout(p,
-           xaxis = list(title = metric_labels[[input$x_metric]], zeroline = FALSE),
-           yaxis = list(title = metric_labels[[input$y_metric]], zeroline = FALSE),
-           margin = list(l = 90, r = 20, b = 80, t = 15),
-           paper_bgcolor = "white", plot_bgcolor = "white"
-    )
-  })
-  
-  observeEvent(event_data("plotly_click", source = "scatter"), {
-    e <- event_data("plotly_click", source = "scatter")
-    if (!is.null(e) && "customdata" %in% names(e)) {
-      code <- as.character(e$customdata[1])
-      if (code %in% pop$abbr) selected_state(code)
-    }
-  })
-  
-  output$scatter_statistics <- renderUI({
-    d <- scatter_data()
-    if (nrow(d) < 4 || sd(d$x) == 0 || sd(d$y) == 0) {
-      return(div(class = "atlas-alert", "Insufficient data for correlation."))
-    }
-    test <- cor.test(d$x, d$y, method = "pearson")
-    r <- unname(test$estimate)
-    label <- if (abs(r) < .1) "Near-zero linear" else if (abs(r) < .3) "Weak" else if (abs(r) < .5) "Moderate" else "Relatively strong"
-    div(class = "kpi-grid",
-        stat_box("Pearson correlation (r)", fmt_signed(r, 3)),
-        stat_box("Simple linear R²", fmt_num(r^2, 3)),
-        stat_box("P-value", format.pval(test$p.value, digits = 3)),
-        stat_box("States plotted", as.character(nrow(d)), label)
-    )
-  })
-  
-  output$correlation_table <- renderDT({
-    d <- view_data()
-    k <- input$y_metric
-    ys <- add_metric(d, k)$value
-    all_x <- unname(x_choices)
-    cor_vals <- vapply(all_x, function(x) {
-      xs <- add_metric(d, x)$value
-      good <- is.finite(xs) & is.finite(ys)
-      if (sum(good) < 4 || sd(xs[good]) == 0 || sd(ys[good]) == 0)
-        return(NA_real_)
-      cor(xs[good], ys[good])
-    }, numeric(1))
-    tbl <- data.frame(
-      Factor = unname(metric_labels[all_x]),
-      `Pearson r` = round(cor_vals, 3),
-      `Absolute r` = round(abs(cor_vals), 3), check.names = FALSE
-    )
-    tbl <- tbl[order(-tbl[["Absolute r"]]), , drop = FALSE]
-    datatable(tbl, rownames = FALSE,
-              options = list(pageLength = 9, dom = "t", ordering = FALSE))
-  })
-  
-  output$download_scatter <- downloadHandler(
-    filename = function() paste0("scatter_", input$x_metric, "_vs_", input$y_metric, ".csv"),
-    content = function(file) {
-      d <- scatter_data()[, c("fips", "state", "abbr", "x", "y")]
-      names(d)[4:5] <- c(input$x_metric, input$y_metric)
-      write.csv(d, file, row.names = FALSE)
-    }
-  )
-  
-  route_data <- reactive({
-    d <- irs_flows[irs_flows$period == input$irs_period, , drop = FALSE]
-    s <- pop$fips[match(input$route_state, pop$abbr)]
-    if (input$route_direction == "in") {
-      d <- d[d$destination_fips == s, , drop = FALSE]
-      d$other_state <- d$origin_state
-    } else {
-      d <- d[d$origin_fips == s, , drop = FALSE]
-      d$other_state <- d$destination_state
-    }
-    head(d[is.finite(d$individuals) & is.finite(d$returns), , drop = FALSE][
-      order(-d$individuals[is.finite(d$individuals) & is.finite(d$returns)]),
-      , drop = FALSE], 10)
-  })
-  
-  output$route_kpis <- renderUI({
-    s <- view_data()
-    s <- s[s$abbr == input$route_state, , drop = FALSE]
-    if (!nrow(s)) return(NULL)
-    div(class = "kpi-grid",
-        stat_box("Incoming IRS exemptions (N2)", fmt_num(s$inflow_people)),
-        stat_box("Outgoing IRS exemptions (N2)", fmt_num(s$outflow_people)),
-        stat_box("Net reported exemptions", fmt_signed(s$net_people, 0),
-                 if (s$incomplete) "Partial: missing/suppressed routes" else "All 50 routes reported"),
-        stat_box("Net per 1,000 (2020 base)", fmt_signed(s$net_rate, 2))
-    )
-  })
-  
-  output$route_bar <- renderPlot({
-    d <- route_data()
-    validate(need(nrow(d) > 0, "No valid interstate route records available."))
-    ggplot(d, aes(x = reorder(other_state, individuals), y = individuals)) +
-      geom_col(fill = if (input$route_direction == "in") "#16887e" else "#dd8766",
-               width = .75) + coord_flip() +
-      labs(x = NULL, y = "Reported IRS exemptions (N2)") +
-      scale_y_continuous(labels = function(x) format(x, big.mark = ",", trim = TRUE)) +
-      theme_minimal(base_size = 11) +
-      theme(panel.grid.major.y = element_blank(),
-            plot.margin = margin(10, 15, 10, 5))
-  })
-  
-  output$route_table <- renderDT({
-    d <- route_data()
-    tbl <- data.frame(
-      `From → To` = paste(d$origin_state, "→", d$destination_state),
-      `Returns (N1)` = d$returns,
-      `Exemptions (N2)` = d$individuals,
-      `AGI ($ millions)` = round(d$agi_thousands / 1000, 1),
-      check.names = FALSE
-    )
-    datatable(tbl, rownames = FALSE,
-              options = list(pageLength = 10, scrollX = TRUE, dom = "t"))
-  })
-  
-  output$state_comparison <- renderDT({
-    d <- view_data()
-    a <- d[d$abbr == input$state_a, , drop = FALSE]
-    b <- d[d$abbr == input$state_b, , drop = FALSE]
-    req(nrow(a) == 1L, nrow(b) == 1L)
-    keys <- c("net_rate", "in_rate", "out_rate", "net_people",
-              "inflow_people", "outflow_people", "population_growth_pct",
-              "median_income", "median_home_value", "median_rent",
-              "median_rent_pct", "unemployment_pct", "poverty_pct",
-              "commute_minutes")
-    show_val <- function(d, k) fmt_metric(d[[k]], k)
-    tbl <- data.frame(
-      Measure = unname(metric_labels[keys]),
-      `First state` = vapply(keys, function(k) show_val(a, k), character(1)),
-      `Second state` = vapply(keys, function(k) show_val(b, k), character(1)),
-      check.names = FALSE
-    )
-    tbl <- rbind(tbl, data.frame(
-      Measure = "Suppressed/missing IRS route records (in+out)",
-      `First state` = as.character(a$missing_in + a$missing_out),
-      `Second state` = as.character(b$missing_in + b$missing_out),
-      check.names = FALSE
-    ))
-    names(tbl)[2:3] <- c(a$state, b$state)
-    datatable(tbl, rownames = FALSE,
-              options = list(pageLength = 18, dom = "t", ordering = FALSE))
-  })
-  
-  trend_data <- reactive({
-    chosen <- c(input$trend_state_a, input$trend_state_b)
-    key <- input$trend_metric
-    if (key == "pop_index") {
-      # We only have 2020/2025; do not invent intervening values.
-      s <- pop[pop$abbr %in% chosen, , drop = FALSE]
-      return(do.call(rbind, lapply(seq_len(nrow(s)), function(i) {
-        data.frame(state = s$state[i], year = c(2020, 2025),
-                   value = c(0, s$population_growth_pct[i]))
-      })))
-    }
-    if (key %in% c("net_people", "net_rate", "inflow_people", "outflow_people")) {
-      m <- merge(irs_totals, pop[, c("fips", "state", "abbr")], by = "fips")
-      m <- m[m$abbr %in% chosen, , drop = FALSE]
-      ends <- c("1920" = 2020L, "2021" = 2021L,
-                "2122" = 2022L, "2223" = 2023L)
-      return(data.frame(state = m$state, year = unname(ends[m$period]),
-                        value = m[[key]], incomplete = m$incomplete,
-                        stringsAsFactors = FALSE))
-    }
-    a <- merge(acs_all, pop[, c("fips", "state", "abbr")], by = "fips")
-    a <- a[a$abbr %in% chosen, , drop = FALSE]
-    data.frame(state = a$state, year = a$acs_year, value = a[[key]],
-               stringsAsFactors = FALSE)
-  })
-  
-  output$trend_plot <- renderPlotly({
-    d <- trend_data()
-    d <- d[is.finite(d$value), , drop = FALSE]
-    validate(need(nrow(d) > 0, "No observations available for this indicator."))
-    d$tooltip <- paste0(d$state, " · ", d$year, ": ",
-                        fmt_num(d$value, 2),
-                        if (input$trend_metric == "pop_index") "%" else "")
-    p <- ggplot(d, aes(x = year, y = value, color = state, group = state,
-                       text = tooltip)) +
-      geom_line(linewidth = 1.1) + geom_point(size = 2.9) +
-      scale_color_manual(values = c("#16887e", "#dd8766")) +
-      scale_x_continuous(breaks = sort(unique(d$year))) +
-      labs(x = if (input$trend_metric %in% c("net_people", "net_rate",
-                                             "inflow_people", "outflow_people")) "IRS period end year" else "Year",
-           y = if (input$trend_metric == "pop_index")
-             "Population change from 2020 (%)" else metric_labels[[input$trend_metric]],
-           color = "State") +
-      theme_minimal(base_size = 12) +
-      theme(legend.position = "bottom", panel.grid.minor = element_blank())
-    ggplotly(p, tooltip = "text", source = "trends") %>%
-      layout(margin = list(l = 85, r = 15, b = 55, t = 15),
-             paper_bgcolor = "white", plot_bgcolor = "white")
-  })
-  
-  output$download_master <- downloadHandler(
-    filename = function() paste0("american_migration_clean_", input$irs_period,
-                                 "_ACS", input$acs_year, ".csv"),
-    content = function(file) write.csv(view_data(), file, row.names = FALSE)
-  )
-}
-
-# -------------------- INTEGRATED DESIGN IMPROVEMENTS --------------------
-# All six design updates are embedded below; no external update file is needed.
-# Original data loading and calculations above are preserved.
-
-stopifnot(exists("ui"), is.function(server), exists("metric_labels"))
-old_metric_labels <- metric_labels
-metric_labels[c("net_rate", "in_rate", "out_rate", "net_people",
-                "inflow_people", "outflow_people")] <- c(
-                  "Net migration proxy per 1,000", "Incoming migration proxy per 1,000",
-                  "Outgoing migration proxy per 1,000", "Net migration proxy (N2)",
-                  "Incoming migration proxy (N2)", "Outgoing migration proxy (N2)")
-
-atlas_definition <- paste(
-  "Migration proxy = IRS exemptions (N2), representing people on tax returns,",
-  "not all movers. Net = incoming minus outgoing.",
-  "All per-1,000 values divide N2 by the state's 2020 population and multiply by 1,000.")
-atlas_irs_keys <- c("net_rate", "in_rate", "out_rate", "net_people",
-                    "inflow_people", "outflow_people")
-
-# Revise the already-built Shiny tag tree, preserving inputs and output IDs.
-atlas_text <- function(x) {
-  for (key in names(metric_labels))
-    x[x == old_metric_labels[[key]]] <- metric_labels[[key]]
-  x[x == "X-axis: explanatory factor"] <- "X-axis: state-level factor"
-  x[x == "Detailed route records"] <- "All available route records"
-  x[x == "Reported net IRS exemptions per 1,000 people, normalized to 2020 population."] <-
-    "Six highest and six lowest reported net migration proxies. * marks partial route data."
-  x[x == "Choose a potential explanatory factor and a migration or population outcome. Points represent states—not individual movers."] <-
-    "Choose a state-level factor and an outcome. Check the reporting periods below; points represent states, not individual movers."
-  x
-}
-atlas_note_ids <- c(state_map = "atlas_map_period", net_rank_plot = "atlas_rank_period",
-                    scatter_plot = "atlas_scatter_period", route_bar = "atlas_route_period",
-                    trend_plot = "atlas_trend_period", state_comparison = "atlas_compare_period",
-                    route_table = "atlas_table_period", correlation_table = "atlas_corr_period")
-atlas_revise_ui <- function(x) {
-  if (inherits(x, "shiny.tag")) {
-    x$children <- lapply(x$children, atlas_revise_ui)
-    id <- x$attribs$id
-    if (!is.null(id) && id %in% names(atlas_note_ids)) {
-      return(tagList(uiOutput(unname(atlas_note_ids[[id]])), x))
-    }
-    if (!is.null(id) && id == "go_overview") {
-      x$attribs$class <- paste(x$attribs$class, "atlas-active")
-      x$attribs[["aria-current"]] <- "page"
-    }
-    return(x)
-  }
-  if (is.list(x)) { x[] <- lapply(x, atlas_revise_ui); return(x) }
-  if (is.character(x) && !inherits(x, "html")) return(atlas_text(x))
-  x
-}
-ui <- atlas_revise_ui(ui)
-ui <- tagList(ui, tags$head(tags$style(HTML("
-.atlas-sidebar .action-button.atlas-active {background:#28605f;color:#fff;border-left:4px solid #72d5c5;padding-left:8px;}
-.atlas-sidebar .action-button:focus-visible {outline:3px solid #b6e7de;outline-offset:2px;}
-.atlas-period-note {font-size:12px;line-height:1.6;color:#405e6c;margin:4px 0 12px;overflow-wrap:anywhere;}
-.atlas-period-note .atlas-definition {display:block;font-size:11px;color:#586f7b;margin-top:4px;}
-.atlas-period-note .atlas-warning {display:block;color:#8a471e;font-weight:650;margin-top:5px;}
-.two-even > *, .two-panels > * {min-width:0;}
-.atlas-card {min-width:0;}
-.atlas-main .dataTables_wrapper {width:100%;overflow-x:auto;}
-@media(max-width:1100px){.two-even,.two-panels{grid-template-columns:minmax(0,1fr);}.kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
-@media(max-width:700px){.atlas-card{padding:15px;}.atlas-control-row{display:block;}.atlas-control-row .form-group{min-width:0;width:100%;}.atlas-sidebar{position:relative;z-index:auto;}.stat-value{font-size:22px;}}
-@media(max-width:420px){.kpi-grid{grid-template-columns:1fr;}.atlas-main{padding:12px;}}
-")), tags$script(HTML("
-$(document).on('shiny:connected', function() {
-  Shiny.addCustomMessageHandler('atlas-active-page', function(page) {
-    $('.atlas-sidebar .action-button').removeClass('atlas-active').removeAttr('aria-current');
-    $('#go_' + page).addClass('atlas-active').attr('aria-current', 'page');
-  });
-});
-"))))
-
-# Append replacements inside the original server's scope, so its existing
-# reactives, click handlers and data downloads remain available.
-atlas_server_updates <- quote({
-  observe({
-    req(input$page)
-    session$sendCustomMessage("atlas-active-page", input$page)
-  })
-  atlas_period <- function(key) {
-    if (key %in% atlas_irs_keys)
-      return(paste("IRS migration:", unname(period_labels[[input$irs_period]])))
-    if (key %in% c("population_growth_pct", "pop_index"))
-      return("Population endpoints: 2020 and 2025")
-    paste("ACS reference year:", input$acs_year,
-          "(confirm survey product and coverage in source metadata)")
-  }
-  atlas_note <- function(keys, extra = NULL) {
-    has_irs <- any(keys %in% atlas_irs_keys)
-    div(class = "atlas-period-note",
-        tags$strong(paste(unique(vapply(keys, atlas_period, character(1))), collapse = " | ")),
-        if (has_irs) tags$span(class = "atlas-definition", atlas_definition),
-        if (!is.null(extra)) tags$span(class = "atlas-warning", extra))
-  }
-  atlas_scatter_note <- reactive({
-    d <- scatter_data()
-    has_irs <- input$y_metric %in% atlas_irs_keys
-    extra <- paste("These sources have different reporting windows; the factor is not necessarily measured before migration.",
-                   "Associations do not establish causation.")
-    if (has_irs) extra <- paste(extra, sum(d$incomplete),
-                                "plotted states have partial IRS totals. Open diamonds mark these states; they remain in the fit and correlation.")
-    atlas_note(c(input$x_metric, input$y_metric), extra)
-  })
-  output$atlas_scatter_period <- renderUI(atlas_scatter_note())
-  output$atlas_corr_period <- renderUI(atlas_scatter_note())
-  output$atlas_map_period <- renderUI(atlas_note(input$map_metric))
-  output$atlas_rank_period <- renderUI(atlas_note("net_rate",
-                                                  "* indicates partial IRS totals. Rankings use reported totals, including partial states."))
-  output$atlas_route_period <- renderUI(atlas_note("inflow_people",
-                                                   "Chart: ten largest routes with reported N2. Table: all available route records."))
-  output$atlas_table_period <- renderUI(atlas_note("inflow_people",
-                                                   "Missing values are shown as N/A. Omitted source pairs cannot appear as records."))
-  output$atlas_compare_period <- renderUI(atlas_note(
-    c("net_rate", "median_income", "population_growth_pct")))
-  output$atlas_trend_period <- renderUI({
-    key <- input$trend_metric
-    if (key %in% atlas_irs_keys) {
-      div(class = "atlas-period-note", tags$strong("IRS periods: 2019–2020 through 2022–2023; x-axis shows period end year."),
-          tags$span(class = "atlas-definition", atlas_definition),
-          tags$span(class = "atlas-warning", "Open diamonds mark partial totals; hover for missing-route counts. Sidebar year selections do not filter this chart."))
-    } else if (key == "pop_index") {
-      div(class = "atlas-period-note", tags$strong("Population endpoints: 2020 and 2025 only."),
-          " The connecting line joins the two observations; it does not show annual estimates.")
-    } else {
-      div(class = "atlas-period-note", tags$strong("ACS reference years: 2019–2024."),
-          " Confirm survey coverage in source metadata; estimates may overlap. Dollar values use their survey-year bases. Sidebar year selections do not filter this chart.")
-    }
-  })
-  # Remove the unconfirmed assertion that the ACS extracts are five-year data.
-  output$map_source_note <- renderUI({
-    n <- sum(view_data()$incomplete)
-    div(class = "atlas-map-note", "Click a state for details.",
-        if (input$map_metric %in% atlas_irs_keys && n > 0)
-          paste(n, "states have partial IRS totals; hover over states for flags."))
-  })
-  
-  output$scatter_plot <- renderPlotly({
-    d <- scatter_data()
-    validate(need(nrow(d) >= 3 && sd(d$x) > 0 && sd(d$y) > 0,
-                  "Not enough variation for a scatterplot."))
-    partial <- (input$y_metric %in% atlas_irs_keys) & d$incomplete
-    d$tip <- paste0(d$tip, "<br>", atlas_period(input$x_metric), "<br>", atlas_period(input$y_metric),
-                    if (input$y_metric %in% atlas_irs_keys)
-                      ifelse(partial, paste0("<br><b>Partial IRS totals:</b> ", d$missing_in,
-                                             " incoming and ", d$missing_out, " outgoing routes missing/unreported"),
-                             "<br>All 50 inbound and 50 outbound N2 routes reported") else "")
-    fit <- lm(y ~ x, data = d)
-    line_d <- data.frame(x = range(d$x))
-    line_d$y <- predict(fit, newdata = line_d)
-    p <- plot_ly(d, x = ~x, y = ~y, text = ~tip, customdata = ~abbr,
-                 type = "scatter", mode = "markers", hoverinfo = "text",
-                 marker = list(color = ifelse(d$abbr == selected_state(), "#da7b55", "#16887e"),
-                               symbol = ifelse(partial, "diamond-open", "circle"), size = 11,
-                               line = list(width = 1.5)), source = "scatter", showlegend = FALSE)
-    p <- add_lines(p, data = line_d, x = ~x, y = ~y, inherit = FALSE,
-                   hoverinfo = "skip", showlegend = FALSE,
-                   line = list(color = "#dd8766", dash = "dash", width = 3))
-    layout(p, xaxis = list(title = metric_labels[[input$x_metric]], automargin = TRUE),
-           yaxis = list(title = metric_labels[[input$y_metric]], automargin = TRUE),
-           margin = list(l = 70, r = 15, b = 85, t = 15),
-           paper_bgcolor = "white", plot_bgcolor = "white") %>%
-      config(displaylogo = FALSE, responsive = TRUE)
-  })
-  output$net_rank_plot <- renderPlot({
-    d <- view_data()
-    d <- d[order(d$net_rate, decreasing = TRUE), ]
-    take <- rbind(head(d, 6), tail(d, 6))
-    take$label <- paste0(take$state, ifelse(take$incomplete, " *", ""))
-    take$kind <- ifelse(take$net_rate >= 0, "Net gain", "Net loss")
-    ggplot(take, aes(reorder(label, net_rate), net_rate, fill = kind)) +
-      geom_col(width = .7) + coord_flip() +
-      scale_fill_manual(values = c("Net gain" = "#16887e", "Net loss" = "#dd8766")) +
-      labs(x = NULL, y = metric_labels[["net_rate"]], caption = "* Partial IRS route data") +
-      theme_minimal(base_size = 11) +
-      theme(legend.position = "none", panel.grid.major.y = element_blank())
-  })
-  
-  # The full table and top-ten chart now have deliberately separate datasets.
-  atlas_all_routes <- reactive({
-    d <- irs_flows[irs_flows$period == input$irs_period, , drop = FALSE]
-    f <- pop$fips[match(input$route_state, pop$abbr)]
-    req(length(f) == 1L, !is.na(f))
-    if (input$route_direction == "in") {
-      d <- d[d$destination_fips == f, , drop = FALSE]
-      d$other_state <- d$origin_state
-    } else {
-      d <- d[d$origin_fips == f, , drop = FALSE]
-      d$other_state <- d$destination_state
-    }
-    d[order(d$individuals, decreasing = TRUE, na.last = TRUE), , drop = FALSE]
-  })
-  route_data <- reactive({
-    d <- atlas_all_routes()
-    head(d[is.finite(d$individuals), , drop = FALSE], 10)
-  })
-  output$route_table <- renderDT({
-    d <- atlas_all_routes()
-    tbl <- data.frame(
-      `From → To` = paste(d$origin_state, "→", d$destination_state),
-      `Returns (N1)` = d$returns, `Exemptions (N2)` = d$individuals,
-      `AGI ($ millions)` = round(d$agi_thousands / 1000, 1),
-      Status = ifelse(!is.finite(d$individuals), "N2 unreported",
-                      ifelse(!is.finite(d$returns) | !is.finite(d$agi_thousands),
-                             "Other field unreported", "Reported")), check.names = FALSE)
-    datatable(tbl, rownames = FALSE, options = list(pageLength = 10,
-                                                    lengthMenu = c(10, 25, 50), scrollX = TRUE, dom = "lftip", order = list(),
-                                                    columnDefs = list(list(targets = "_all", defaultContent = "N/A"))))
-  })
-  output$trend_plot <- renderPlotly({
-    d <- trend_data()
-    d <- d[is.finite(d$value), , drop = FALSE]
-    validate(need(nrow(d) > 0, "No observations available for this indicator."))
-    key <- input$trend_metric
-    d$partial <- FALSE
-    d$tooltip <- paste0(d$state, " · ", d$year, ": ", fmt_num(d$value, 2))
-    if (key %in% atlas_irs_keys) {
-      m <- merge(irs_totals, pop[, c("fips", "state")], by = "fips")
-      ends <- c("1920" = 2020L, "2021" = 2021L, "2122" = 2022L, "2223" = 2023L)
-      m$year <- unname(ends[m$period])
-      idx <- match(paste(d$state, d$year), paste(m$state, m$year))
-      stopifnot(!anyNA(idx))
-      d$partial <- m$incomplete[idx]
-      d$tooltip <- paste0(d$state, "<br>IRS ", unname(period_labels[m$period[idx]]),
-                          "<br>", metric_labels[[key]], ": ", fmt_num(d$value, 2),
-                          ifelse(d$partial, paste0("<br>Partial totals: ", m$missing_in[idx],
-                                                   " incoming and ", m$missing_out[idx], " outgoing routes missing/unreported"),
-                                 "<br>All inbound and outbound N2 routes reported"))
-    } else if (key == "pop_index") {
-      d$tooltip <- paste0(d$tooltip, "% change from 2020")
-    } else {
-      d$tooltip <- paste0(d$state, "<br>ACS reference year: ", d$year,
-                          "<br>", metric_labels[[key]], ": ", fmt_num(d$value, 2))
-    }
-    d <- d[order(d$state, d$year), ]
-    p <- ggplot(d, aes(year, value, color = state, group = state, text = tooltip)) +
-      geom_line(linewidth = 1.1) + geom_point(aes(shape = partial), size = 3.2) +
-      scale_shape_manual(values = c("FALSE" = 16, "TRUE" = 5),
-                         breaks = c(FALSE, TRUE), labels = c("Complete routes", "Partial routes"),
-                         name = "IRS coverage") +
-      scale_color_manual(values = c("#16887e", "#dd8766")) +
-      scale_x_continuous(breaks = sort(unique(d$year))) +
-      labs(x = if (key %in% atlas_irs_keys) "IRS period end year" else "Year",
-           y = if (key == "pop_index") "Population change from 2020 (%)" else metric_labels[[key]],
-           color = "State") + theme_minimal(base_size = 12) +
-      theme(legend.position = "bottom", panel.grid.minor = element_blank())
-    if (!any(d$partial)) p <- p + guides(shape = "none")
-    ggplotly(p, tooltip = "text", source = "trends") %>%
-      layout(margin = list(l = 75, r = 15, b = 65, t = 15)) %>%
-      config(displaylogo = FALSE, responsive = TRUE)
-  })
-})
-body(server) <- as.call(c(as.list(body(server)), list(atlas_server_updates)))
-
 
 shinyApp(ui = ui, server = server)
 >>>>>>> f1f2313814ca64911ab944a48d4ddd33085cc2f6
