@@ -35,7 +35,6 @@ glimpse(outflow)
 
 
 
-
 # Identify valid state and DC FIPS codes
 state_codes <- sort(unique(inflow$y2_statefips))
 

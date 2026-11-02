@@ -94,3 +94,7 @@ load_acs_year <- function(year) {
     fips = fips,
     acs_year = as.integer(year),
     median_income = find_col(d, "^Median Household Income", "household income"),
+    
+    
+    
+    
