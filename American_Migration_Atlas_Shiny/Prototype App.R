@@ -59,7 +59,8 @@ canon_fips <- function(x) sprintf("%02d", as.integer(as_number(x)))
 period_labels <- c("1920" = "2019–2020", "2021" = "2020–2021",
                    "2122" = "2021–2022", "2223" = "2022–2023")
 
-# The new population file has only 2020 and 2025 endpoints, NOT 2021–2024.
+# This population-estimates file has 2020 and 2025 endpoints.
+# ACS population for reference years 2019–2024 is loaded separately below.
 raw_pop <- read_source("state_population_growth_clean.csv")
 stopifnot(all(c("STATE", "NAME", "POPESTIMATE2020", "POPESTIMATE2025",
                 "population_growth_pct") %in% names(raw_pop)))
@@ -108,8 +109,11 @@ load_acs_year <- function(year) {
     poverty_total_column <- "Population for Whom Poverty Status Is Determined"
     poverty_prefix <- paste0(poverty_prefix, "Ratio of Income to Poverty Level ")
   }
+  # read.csv(check.names = FALSE) preserves spaces; also accept R-style dots.
+  population_column <- "Total Population"
+  if (!population_column %in% names(raw)) population_column <- "Total.Population"
   required_columns <- c(
-    income_column, labor_column, home_column, rent_share_column,
+    population_column, income_column, labor_column, home_column, rent_share_column,
     poverty_total_column, paste0(poverty_prefix, c("Under .50", ".50 to .74", ".75 to .99")),
     "Median Gross Rent", "Average Commute to Work (In Min)",
     "Civilian Population in Labor Force 16 Years and Over: Unemployed"
@@ -129,6 +133,7 @@ load_acs_year <- function(year) {
   )
   data.frame(
     fips = raw$fips, acs_year = as.integer(year),
+    acs_population = as_number(raw[[population_column]]),
     median_income = as_number(raw[[income_column]]),
     median_home_value = as_number(raw[[home_column]]),
     median_rent = as_number(raw[["Median Gross Rent"]]),
@@ -254,6 +259,7 @@ metric_labels <- c(
   inflow_people = "Incoming migration proxy (N2)",
   outflow_people = "Outgoing migration proxy (N2)",
   population_growth_pct = "Population growth, 2020–2025 (%)",
+  acs_population = "ACS total population (people)",
   median_income = "Median household income ($)",
   median_home_value = "Median home value ($)",
   home_income_ratio = "Median home value / household income",
@@ -280,7 +286,9 @@ map_choices <- pretty_choices(c(
   "unemployment_pct", "poverty_pct", "median_rent_pct"
 ))
 trend_choices <- c(
-  "Population change: 2020 vs. 2025 only" = "pop_index",
+  "Population change: ACS 2019–2024 (2020 baseline)" = "pop_index",
+  "Total population: ACS 2019–2024" = "acs_population",
+  "Population change: 2020–2025 endpoints" = "pop_endpoints",
   pretty_choices(c("net_people", "net_rate", "inflow_people", "outflow_people",
                    "median_income", "median_home_value", "median_rent",
                    "median_rent_pct", "unemployment_pct", "poverty_pct",
@@ -359,8 +367,14 @@ app_css <- "
   --line: #d5dde4;
   --soft: #f3f6f8;
   --warning: #875019;
-  --space: 8px;
-  --section-space: 24px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space: var(--space-2);
+  --section-space: var(--space-6);
 }
 body {background:#fff;color:var(--ink);font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.55;}
 .atlas-shell {display:flex;min-height:100vh;margin:0 -15px;align-items:stretch;}
@@ -488,10 +502,31 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,
   .atlas-control-row {gap:12px;}
   .atlas-control-row .form-group {min-width:100%;margin-bottom:8px;}
   .atlas-lede {margin-bottom:20px;}
-  #state_map {height:360px!important;}
+  #state_map {height:420px!important;}
+  .atlas-sidebar .atlas-nav-label {display:none;}
+  .atlas-sidebar .action-button {font-size:12px;padding:8px;}
+  .atlas-sidebar .atlas-brand {padding-bottom:8px;}
+  .atlas-sidebar {padding:12px 16px;}
   .team-grid {grid-template-columns:1fr;}
   .stat-value {font-size:21px;}
 }
+.atlas-main {font-variant-numeric:tabular-nums;}
+.atlas-page-header .atlas-lede {margin-bottom:var(--space-3);}
+.atlas-reporting-controls {display:grid;grid-template-columns:1fr 1fr 1.5fr;gap:var(--space-4);align-items:end;padding:var(--space-3) 0;margin-bottom:var(--space-2);border-bottom:1px solid var(--line);}
+.atlas-reporting-controls .form-group {width:100%;margin:0;min-width:0;}
+.atlas-reporting-controls > div {min-width:0;}
+.atlas-main .atlas-card {margin-bottom:var(--section-space);padding-top:var(--space-4);}
+.atlas-main .atlas-map-section {padding-top:0;}
+.atlas-map-section .atlas-period-note {border:0;padding:0;margin:var(--space-2) 0;}
+.atlas-definition,.atlas-warning,.atlas-map-note,.atlas-sub {font-size:12px;line-height:1.5;}
+.atlas-map-note {margin:var(--space-2) 0;}
+.atlas-missing-key::before {content:'';display:inline-block;width:12px;height:12px;background:#c5cbd1;border:1px solid #526372;margin-right:var(--space-2);vertical-align:middle;}
+@media(max-width:760px) {
+  .atlas-reporting-controls {grid-template-columns:1fr 1fr;gap:var(--space-3);}
+  .atlas-reporting-controls > .shiny-panel-conditional {grid-column:1 / -1;}
+  .atlas-main {padding-top:var(--space-4);}
+}
+@media(max-width:380px) {.atlas-reporting-controls {grid-template-columns:1fr;}}
 @media(prefers-reduced-motion:reduce) {*,*::before,*::after {scroll-behavior:auto!important;transition:none!important;}}
 "
 
@@ -610,9 +645,8 @@ server <- function(input, output, session) {
       )
     } else {
       values <- d$value[is.finite(d$value)]
-      req(length(values) > 0L)
-      scale_min <- min(values)
-      scale_max <- max(values)
+      scale_min <- if (length(values)) min(values) else 0
+      scale_max <- if (length(values)) max(values) else 1
       if (scale_min == scale_max) scale_max <- scale_min + 1
       map_colors <- list(
         c(0, "#e6f0ff"),
@@ -635,8 +669,9 @@ server <- function(input, output, session) {
       "Value"
     )
     
-    plot_ly(
-      data = d,
+    missing_states <- filter(d, !is.finite(value))
+    map <- plot_ly(
+      data = filter(d, is.finite(value)),
       type = "choropleth",
       locationmode = "USA-states",
       locations = ~abbr,
@@ -674,11 +709,25 @@ server <- function(input, output, session) {
       ) %>%
       config(displaylogo = FALSE, responsive = TRUE, scrollZoom = FALSE,
              modeBarButtonsToRemove = c("lasso2d", "select2d"))
+    if (nrow(missing_states) > 0L) {
+      map <- add_trace(map, data = missing_states, inherit = FALSE,
+                       type = "choropleth", locationmode = "USA-states", locations = ~abbr,
+                       z = rep(0, nrow(missing_states)), zmin = 0, zmax = 1,
+                       colorscale = list(c(0, "#c5cbd1"), c(1, "#c5cbd1")),
+                       showscale = FALSE, showlegend = FALSE,
+                       text = ~paste0(state, "<br>", metric_label, ": No data"),
+                       customdata = ~abbr, key = ~abbr,
+                       hovertemplate = "%{text}<extra></extra>",
+                       marker = list(line = list(color = "#ffffff", width = 0.85)))
+    }
+    map
   })
   
   output$map_source_note <- renderUI({
     n <- sum(view_data()$incomplete)
-    div(class = "atlas-map-note", "Click a state for details.",
+    div(class = "atlas-map-note",
+        tags$span(class = "atlas-missing-key", "Gray = no data; zero is a measured value."),
+        tags$span(" Color limits adjust to the selected data; compare legend values, not shades, across years."),
         if (input$map_metric %in% atlas_irs_keys && n > 0)
           paste(n, "states have partial IRS totals; hover over states for flags."))
   })
@@ -915,6 +964,20 @@ server <- function(input, output, session) {
     chosen <- c(input$trend_state_a, input$trend_state_b)
     key <- input$trend_metric
     if (key == "pop_index") {
+      baseline <- acs_all %>%
+        filter(acs_year == 2020) %>%
+        select(fips, baseline_population = acs_population)
+      survey <- acs_all %>%
+        left_join(baseline, by = "fips") %>%
+        left_join(select(pop, fips, state, abbr), by = "fips") %>%
+        filter(abbr %in% chosen) %>%
+        mutate(value = ifelse(is.finite(baseline_population) & baseline_population > 0,
+                              100 * (acs_population / baseline_population - 1), NA_real_)) %>%
+        arrange(state, acs_year)
+      return(data.frame(state = survey$state, year = survey$acs_year,
+                        value = survey$value, population = survey$acs_population))
+    }
+    if (key == "pop_endpoints") {
       states <- filter(pop, abbr %in% chosen)
       baseline <- data.frame(state = states$state, year = 2020, value = 0)
       endpoint <- data.frame(state = states$state, year = 2025,
@@ -961,7 +1024,12 @@ server <- function(input, output, session) {
                                                    " incoming and ", m$missing_out[idx], " outgoing routes missing/unreported"),
                                  "<br>All inbound and outbound N2 routes reported"))
     } else if (key == "pop_index") {
-      d$tooltip <- paste0(d$tooltip, "% change from 2020")
+      d$tooltip <- paste0(d$state, "<br>ACS reference year: ", d$year,
+                          "<br>Total population: ", fmt_num(d$population),
+                          "<br>Change from ACS 2020: ", fmt_num(d$value, 2), "%")
+    } else if (key == "pop_endpoints") {
+      d$tooltip <- paste0(d$tooltip, "% change from 2020",
+                          "<br>Source: state_population_growth_clean.csv")
     } else {
       d$tooltip <- paste0(d$state, "<br>ACS reference year: ", d$year,
                           "<br>", metric_labels[[key]], ": ", fmt_num(d$value, 2))
@@ -975,7 +1043,8 @@ server <- function(input, output, session) {
       scale_color_manual(values = c("#2459aa", "#b46228")) +
       scale_x_continuous(breaks = sort(unique(d$year))) +
       labs(x = if (key %in% atlas_irs_keys) "IRS period end year" else "Year",
-           y = if (key == "pop_index") "Population change from 2020 (%)" else metric_labels[[key]],
+           y = if (key == "pop_index") "ACS population change from ACS 2020 (%)" else
+             if (key == "pop_endpoints") "Population change from 2020 (%)" else metric_labels[[key]],
            color = "State") + atlas_chart_theme() +
       theme(legend.position = "bottom", panel.grid.minor = element_blank())
     if (!any(d$partial)) p <- p + guides(shape = "none")
@@ -998,7 +1067,7 @@ server <- function(input, output, session) {
   atlas_period <- function(key) {
     if (key %in% atlas_irs_keys)
       return(paste("IRS migration:", unname(period_labels[[input$irs_period]])))
-    if (key %in% c("population_growth_pct", "pop_index"))
+    if (key %in% c("population_growth_pct", "pop_endpoints"))
       return("Population endpoints: 2020 and 2025")
     paste("ACS reference year:", input$acs_year,
           "(confirm survey product and coverage in source metadata)")
@@ -1025,7 +1094,13 @@ server <- function(input, output, session) {
   })
   output$atlas_scatter_period <- renderUI(atlas_scatter_note())
   output$atlas_corr_period <- renderUI(atlas_scatter_note())
-  output$atlas_map_period <- renderUI(atlas_note(input$map_metric))
+  output$atlas_map_period <- renderUI({
+    key <- input$map_metric
+    explanation <- if (key %in% c("net_rate", "net_people"))
+      "Blue = net gains; orange = net losses; the scale is centered at zero." else
+        "Darker blue indicates a larger value; read the legend for the selected range."
+    atlas_note(key, explanation)
+  })
   output$atlas_rank_period <- renderUI(atlas_note("net_rate",
                                                   "* indicates partial IRS totals. Rankings use reported totals, including partial states."))
   output$atlas_route_period <- renderUI(atlas_note("inflow_people",
@@ -1040,7 +1115,10 @@ server <- function(input, output, session) {
       div(class = "atlas-period-note", tags$strong("IRS periods: 2019–2020 through 2022–2023; x-axis shows period end year."),
           tags$span(class = "atlas-definition", atlas_definition),
           tags$span(class = "atlas-warning", "Open diamonds mark partial totals; hover for missing-route counts. Sidebar year selections do not filter this chart."))
-    } else if (key == "pop_index") {
+    } else if (key %in% c("pop_index", "acs_population")) {
+      div(class = "atlas-period-note", tags$strong("ACS population: reference years 2019–2024."),
+          " Each point uses Total Population from that year's ACS file. Percentage change uses the same state's ACS 2020 baseline. No ACS 2025 file was supplied. Estimates may cover overlapping survey periods; confirm product coverage before interpreting changes. Sidebar year selections do not filter this chart.")
+    } else if (key == "pop_endpoints") {
       div(class = "atlas-period-note", tags$strong("Population endpoints: 2020 and 2025 only."),
           " The connecting line joins the two observations; it does not show annual estimates.")
     } else {
@@ -3502,7 +3580,40 @@ ui <- fluidPage(
     $('.atlas-sidebar .action-button').removeClass('atlas-active').removeAttr('aria-current');
     $('#go_' + page).addClass('atlas-active').attr('aria-current', 'page');
   });
-});"))),
+});
+(function() {
+  var timer;
+  function fitAtlasMap() {
+    var el = document.getElementById('state_map');
+    if (!el || !el.data || !window.Plotly || !el.offsetWidth) return;
+    var narrow = el.clientWidth < 620;
+    var update = {
+      'margin.r': narrow ? 8 : 95,
+      'margin.b': narrow ? 80 : 0,
+      'margin.t': 8,
+      'height': el.clientHeight,
+      'width': el.clientWidth
+    };
+    Plotly.relayout(el, update);
+    Plotly.restyle(el, {
+      'colorbar.orientation': narrow ? 'h' : 'v',
+      'colorbar.x': narrow ? 0.5 : 1.01,
+      'colorbar.y': narrow ? -0.12 : 0.5,
+      'colorbar.xanchor': narrow ? 'center' : 'left',
+      'colorbar.yanchor': narrow ? 'top' : 'middle',
+      'colorbar.len': narrow ? 0.85 : 0.67,
+      'colorbar.thickness': narrow ? 12 : 15
+    }, [0]);
+  }
+  function scheduleMap() { clearTimeout(timer); timer = setTimeout(fitAtlasMap, 120); }
+  $(window).on('resize', scheduleMap);
+  $(document).on('shiny:value', function(e) {
+    if (e.name === 'state_map') scheduleMap();
+  });
+  $(document).on('shiny:inputchanged', function(e) {
+    if (e.name === 'page') scheduleMap();
+  });
+})();"))),
   tags$a(href = "#atlas_main", class = "atlas-skip-link", "Skip to main content"),
   div(class = "atlas-shell",
       div(class = "atlas-sidebar", role = "navigation", "aria-label" = "Atlas navigation and data selection",
@@ -3517,38 +3628,28 @@ ui <- fluidPage(
           actionButton("go_trends", "Trends"),
           div(class = "atlas-nav-label", "About the project"),
           actionButton("go_about", "About us"),
-          actionButton("go_methods", "Data & methods"),
-          tags$hr(),
-          div(class = "atlas-nav-label", "Reporting periods"),
-          selectInput("irs_period", "Migration period (IRS)",
-                      choices = stats::setNames(names(period_labels), period_labels),
-                      selected = "2223"),
-          selectInput("acs_year", "Survey year (ACS)",
-                      choices = as.character(2019:2024), selected = "2024"),
-          div(class = "atlas-side-note",
-              "50 states · Four IRS migration periods · Six ACS reference years")
+          actionButton("go_methods", "Data & methods")
       ),
       div(class = "atlas-main", id = "atlas_main", role = "main", tabindex = "-1",
+          conditionalPanel("input.page == 'overview'",
+                           tags$header(class = "atlas-page-header",
+                                       h1("U.S. migration overview"),
+                                       p(class = "atlas-lede", "Explore state-level migration and population change. Select a measure, then click a state for details."))),
+          conditionalPanel("input.page != 'about' && input.page != 'methods'",
+                           div(class = "atlas-reporting-controls", role = "group",
+                               "aria-label" = "Reporting periods and map measure",
+                               selectInput("irs_period", "IRS migration period",
+                                           choices = stats::setNames(names(period_labels), period_labels), selected = "2223"),
+                               selectInput("acs_year", "ACS reference year",
+                                           choices = as.character(2019:2024), selected = "2024"),
+                               conditionalPanel("input.page == 'overview'",
+                                                selectInput("map_metric", "Map measure",
+                                                            choices = map_choices, selected = "net_rate")))),
           tabsetPanel(id = "page", type = "hidden",
                       tabPanel(title = "Overview", value = "overview",
-                               h1("U.S. migration overview"),
-                               p(class = "atlas-lede",
-                                 "Explore population change and matched IRS interstate migration. Select a metric or click a state on the interactive U.S. map."),
-                               # Atlas layout: heading and measure control share one row.
                                tags$section(class = "atlas-card atlas-map-section",
-                                            div(class = "atlas-map-header",
-                                                div(class = "atlas-map-heading",
-                                                    h2("United States, state by state"),
-                                                    p(class = "atlas-sub",
-                                                      "Compare the 50 states. For net migration, blue shows gains and orange shows losses; other measures use a blue scale.")
-                                                ),
-                                                div(class = "atlas-map-controls",
-                                                    selectInput("map_metric", "Map measure",
-                                                                choices = map_choices, selected = "net_rate")
-                                                )
-                                            ),
                                             uiOutput("atlas_map_period"),
-                                            plotlyOutput("state_map", height = "470px"),
+                                            plotlyOutput("state_map", height = "clamp(360px, 43vw, 560px)"),
                                             uiOutput("map_source_note"),
                                             uiOutput("selected_details")
                                ),
@@ -3620,7 +3721,7 @@ ui <- fluidPage(
                       ),
                       tabPanel(title = "Trends", value = "trends",
                                h1("Changes over time"),
-                               p(class = "atlas-lede", "Compare four annual IRS migration periods, ACS reference years 2019–2024, or the two available population estimates (2020 and 2025)."),
+                               p(class = "atlas-lede", "Compare ACS population and other measures for reference years 2019–2024, four IRS migration periods, or the separate 2020–2025 population endpoints."),
                                ui_card("Time-series comparison",
                                        div(class = "atlas-control-row",
                                            selectInput("trend_metric", "Measure", choices = trend_choices,
@@ -3630,7 +3731,7 @@ ui <- fluidPage(
                                        ),
                                        uiOutput("atlas_trend_period"),
                                        plotlyOutput("trend_plot", height = "480px"),
-                                       div(class = "atlas-alert", "ACS estimates may represent overlapping multi-year periods and monetary values use their own survey-year inflation bases. Population is available for 2020 and 2025 only. IRS per-1,000 values use the fixed 2020 population denominator.")
+                                       div(class = "atlas-alert", "ACS estimates may represent overlapping multi-year periods and monetary values use their own survey-year inflation bases. ACS population is available for reference years 2019–2024; the separate population-estimates file contains 2020 and 2025 endpoints. IRS per-1,000 values use the fixed 2020 population denominator.")
                                )
                       ),
                       tabPanel(title = "About Us", value = "about",
@@ -3642,9 +3743,9 @@ ui <- fluidPage(
                                    team_card(
                                      "lucas-kim.png", "Lucas Kim", "Economics · Class of 2027",
                                      paste0(
-                                       "Lucas studies economics with a minor in Latin American and Caribbean Studies and Data Science. ",
-                                       "He is interested in public policy, energy economics, and working in the government as an ",
-                                       "economist. He participated in Princeton PPIA JSI in the summer of 2026."
+                                       "Lucas studies economics with a minor in Latin American and Caribbean Studies. ",
+                                       "His interests in environmental economics and public policy offer perspective ",
+                                       "on economic opportunity and regional conditions."
                                      ),
                                      "https://www.linkedin.com/in/lucas-kim-2b321a28a/"
                                    ),
@@ -3669,7 +3770,7 @@ ui <- fluidPage(
                                ),
                                ui_card("Why we built American Migration Atlas",
                                        p("As part of our BIOL 1185 Visualizing Big Data project, we investigate where U.S. populations are changing and how interstate migration relates to rent, home values, employment, income and other state-level conditions."),
-                                       p("Our visualizations use publicly available Census Bureau, American Community Survey (ACS) and IRS data. We distinguish population growth from interstate migration and treat correlations as exploratory associations, not explanations of individual decisions."),
+                                       p("Our visualizations use publicly available Census, American Community Survey (ACS) and IRS data. We distinguish population growth from interstate migration and treat correlations as exploratory associations, not explanations of individual decisions."),
                                        tags$span(class = "atlas-badge", "Washington and Lee University · BIOL 1185")
                                )
                       ),
@@ -3694,6 +3795,7 @@ ui <- fluidPage(
                                              tags$li("Net IRS exemptions (N2) = reported incoming exemptions minus reported outgoing exemptions."),
                                              tags$li("Rates per 1,000 = IRS exemptions divided by the state's 2020 population, multiplied by 1,000. All four IRS periods use this same fixed base."),
                                              tags$li("Population growth (%) = (2025 population − 2020 population) / 2020 population × 100. The supplied growth column is rounded."),
+                                             tags$li("ACS population change (%) = (ACS reference-year population / ACS 2020 population − 1) × 100."),
                                              tags$li("ACS unemployment (%) = unemployed civilians / civilian labor force × 100."),
                                              tags$li("ACS poverty (%) = respondents in three below-1.00 poverty-ratio bands / relevant population × 100."),
                                              tags$li("Home-to-income ratio = median home value / median household income."),
@@ -3703,24 +3805,21 @@ ui <- fluidPage(
                                ),
                                ui_card("Important interpretation and data-quality notes",
                                        tags$ul(
-                                         tags$li("The unit of observation in this project is a state-year."),
                                          tags$li("Both IRS inflow and outflow files describe the same routes. We analyze each pair once rather than add both source files."),
                                          tags$li("Migration entries use the source field 'exemptions' (N2), not a complete count of all people moving. Some pairs are suppressed or omitted, so reported state totals can be incomplete."),
                                          tags$li("The route universe includes 50 states and Washington, D.C.; maps and state comparisons cover the 50 states only."),
                                          tags$li("AGI is measured in thousands of dollars. Some paired IRS files differ by $1,000 of AGI for a few historic routes; the inflow view is used consistently."),
-                                         tags$li("We have no population denominators for 2019, 2021, 2022 or 2023. Rate per 1,000 is therefore a 2020-population-normalized comparison, not an official year-specific rate."),
-                                         tags$li("Only 2020 and 2025 population estimates are available. No intermediate annual population points are fabricated."),
+                                         tags$li("IRS rates retain the fixed 2020 population-estimate denominator for consistency. ACS population is shown separately and is not substituted into these rates."),
+                                         tags$li("ACS Total Population supplies reference-year observations for 2019–2024. Its percentage change uses ACS 2020 as the baseline. The separate 2020–2025 endpoint comparison uses the population-estimates file; these sources are not spliced into a single series."),
                                          tags$li("ACS extracts may use overlapping multi-year samples, and survey-year dollar units vary. Confirm the Census product when interpreting change over time."),
-                                         tags$li("The purpose of regressing ACS variables on population changes is to conduct exploratory analyses between variables of interest and population change. This is not a causal study."),
+                                         tags$li("Comparing ACS attributes with migration does not reveal why individuals relocated or prove causal relationships."),
                                          tags$li("The old standalone 2024 housing-cost-burden source was not supplied with this new dataset; that metric has been removed.")
                                        )
                                )
                       )
           )
       )
-      
   )
 )
 
 shinyApp(ui = ui, server = server)
-
