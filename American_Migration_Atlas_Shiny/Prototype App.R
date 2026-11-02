@@ -42,8 +42,15 @@ repo_dir <- normalizePath(repo_hits[1], mustWork = TRUE)
 read_source <- function(filename) {
   path <- file.path(repo_dir, filename)
   if (!file.exists(path)) stop("Missing CSV in your app folder: ", filename)
-  read.csv(path, check.names = FALSE, stringsAsFactors = FALSE,
-           fileEncoding = "UTF-8-BOM", na.strings = c("NA", "", "N/A"))
+  data <- read.csv(path, check.names = FALSE, stringsAsFactors = FALSE,
+                   fileEncoding = "UTF-8-BOM", na.strings = c("NA", "", "N/A"))
+  # Some ACS exports have blank or repeated metadata headings. dplyr needs
+  # every column to have a nonempty, unique name. Keep the metric names intact.
+  column_names <- names(data)
+  blank_names <- is.na(column_names) | trimws(column_names) == ""
+  column_names[blank_names] <- paste0("unnamed_column_", which(blank_names))
+  names(data) <- make.unique(column_names, sep = "_")
+  data
 }
 as_number <- function(x) {
   suppressWarnings(as.numeric(gsub("[$,% ]", "", as.character(x))))
@@ -310,8 +317,8 @@ fmt_metric <- function(x, key) {
 }
 
 ui_card <- function(title, ..., subtitle = NULL) {
-  div(class = "atlas-card", h3(title),
-      if (!is.null(subtitle)) p(class = "atlas-sub", subtitle), ...)
+  tags$section(class = "atlas-card", h2(title),
+               if (!is.null(subtitle)) p(class = "atlas-sub", subtitle), ...)
 }
 stat_box <- function(label, value, detail = "") {
   div(class = "stat-card", div(class = "stat-label", label),
@@ -330,68 +337,162 @@ team_card <- function(photo_src, name, discipline, bio, linkedin) {
       p(class = "team-bio", bio),
       tags$a(class = "team-link", href = linkedin,
              target = "_blank", rel = "noopener noreferrer",
-             "View LinkedIn profile ↗")
+             "View LinkedIn profile")
   )
 }
 
+# VISUAL SETTINGS: research-atlas direction.
+# Georgia is used only for the existing project name; data use Arial/sans-serif.
+# Open sections and 8/16/24/32px spacing organize the analytical pages.
+# The map header, selected-state strip, and sidebar groups are ordinary Shiny tags.
+# Edit CSS here; keep calculations in the data and server sections unchanged.
 app_css <- "
-body {background:#f5f7f7;color:#1d3440;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;}
-.atlas-shell {display:flex;min-height:100vh;margin:-15px;align-items:stretch;}
-.atlas-sidebar {width:238px;min-width:238px;padding:25px 15px 20px;background:#112a39;color:#e1eeee;position:sticky;top:0;height:100vh;overflow-y:auto;z-index:1000;}
-.atlas-brand {font-weight:800;font-size:22px;line-height:1.14;color:white;padding:7px 8px 23px;}
-.atlas-brand small {display:block;color:#a2c2c8;font-weight:600;font-size:11px;letter-spacing:1px;margin-top:10px;}
-.atlas-sidebar .action-button {background:transparent;border:0;border-radius:10px;color:#e1eeee;text-align:left;width:100%;padding:12px;margin:2px 0;box-shadow:none;font-weight:650;}
-.atlas-sidebar .action-button:hover,.atlas-sidebar .action-button:focus {background:#244353;color:white;}
-.atlas-sidebar label {color:#c1d3d6!important;font-size:11px;font-weight:750;letter-spacing:.35px;}
-.atlas-sidebar .form-group {margin-bottom:14px;}
-.atlas-sidebar .selectize-input {color:#223c48;}
-.atlas-sidebar hr {border-color:#36505e;margin:16px 0;}
-.atlas-sidebar .atlas-side-note {color:#a2c2c8;font-size:11px;line-height:1.6;}
-.atlas-main {flex:1;min-width:0;padding:28px 35px 48px;}
-.atlas-main h1 {font-size:34px;font-weight:800;letter-spacing:-1px;margin:5px 0 8px;}
-.atlas-main h3 {font-size:18px;font-weight:750;margin-top:0;margin-bottom:8px;}
-.atlas-lede,.atlas-sub {color:#6d8490;margin-bottom:20px;line-height:1.5;}
-.atlas-sub {font-size:12px;margin:-3px 0 16px;}
-.atlas-card,.stat-card {background:white;border:1px solid #e2eaea;border-radius:15px;padding:22px;margin:0 0 18px;box-shadow:0 2px 12px rgba(10,36,44,.03);}
-.kpi-grid {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:18px;}
-.stat-card {min-height:112px;margin-bottom:0;}
-.stat-label {font-size:12px;color:#667f8a;font-weight:600;}
-.stat-value {font-size:25px;font-weight:800;color:#173d49;margin-top:7px;}
-.stat-sub {font-size:11px;color:#8499a0;margin-top:6px;}
-.two-panels {display:grid;grid-template-columns:minmax(0,1.55fr) minmax(320px,1fr);gap:17px;align-items:start;}
-.two-even {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:17px;align-items:start;}
+/* Skip link becomes visible when reached by keyboard. */
+.atlas-skip-link {position:absolute;left:12px;top:-100px;z-index:2000;padding:10px 16px;background:white;color:#173f7a;border:2px solid #2459aa;}
+.atlas-skip-link:focus {top:12px;}
+/* Edit these tokens to change the visual system in one place. */
+:root {
+  --ink: #182c3d;
+  --muted: #526372;
+  --accent: #2459aa;
+  --accent-dark: #173f7a;
+  --line: #d5dde4;
+  --soft: #f3f6f8;
+  --warning: #875019;
+  --space: 8px;
+  --section-space: 24px;
+}
+body {background:#fff;color:var(--ink);font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.55;}
+.atlas-shell {display:flex;min-height:100vh;margin:0 -15px;align-items:stretch;}
+.atlas-sidebar {width:220px;min-width:220px;padding:24px 16px;background:var(--soft);border-right:1px solid var(--line);position:sticky;top:0;height:100vh;overflow-y:auto;}
+.atlas-brand {font-family:Georgia,serif;font-size:22px;line-height:1.25;font-weight:700;padding:0 8px 24px;color:var(--ink);}
+.atlas-brand small {font-family:Arial,Helvetica,sans-serif;display:block;font-size:12px;font-weight:400;color:var(--muted);margin-top:8px;}
+.atlas-sidebar .action-button {width:100%;min-height:42px;text-align:left;border:0;border-left:3px solid transparent;border-radius:0;background:transparent;color:var(--muted);padding:9px 10px;margin:2px 0;font-size:14px;font-weight:400;box-shadow:none;}
+.atlas-sidebar .action-button:hover {background:#e4ebf2;color:var(--ink);}
+.atlas-sidebar .action-button.atlas-active {background:#e0eafa;color:var(--accent-dark);border-left-color:var(--accent);font-weight:700;}
+.atlas-sidebar hr {border-color:var(--line);margin:24px 0 20px;}
+.atlas-sidebar label {color:var(--ink);font-size:12px;font-weight:700;}
+.atlas-sidebar .form-group {margin-bottom:16px;}
+.atlas-side-note {font-size:12px;color:var(--muted);line-height:1.6;}
+/* Limit the working canvas so charts and captions remain visually connected. */
+.atlas-main {flex:1;min-width:0;max-width:1320px;padding:32px 32px 48px;}
+.atlas-nav-label {font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);margin:20px 10px 6px;}
+.atlas-brand + .atlas-nav-label {margin-top:0;}
+.atlas-main h1 {border-bottom:2px solid var(--ink);padding-bottom:12px;}
+.atlas-card.atlas-map-section {border-top:0;padding-top:0;}
+.atlas-map-header {display:flex;gap:24px;align-items:flex-end;justify-content:space-between;margin:0 0 12px;}
+.atlas-map-heading {flex:1;min-width:0;}
+.atlas-map-heading .atlas-sub {margin-bottom:0;max-width:58ch;}
+.atlas-map-header .atlas-map-controls {flex:0 1 340px;min-width:240px;margin:0;}
+.atlas-map-header .form-group {margin-bottom:0;width:100%!important;}
+.atlas-selection {border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--soft);padding:12px 16px;font-size:13px;margin-top:12px;}
+.atlas-selection-label {display:block;color:var(--muted);font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;margin-bottom:4px;}
+.atlas-summary-heading {font-size:13px!important;color:var(--muted);margin:0 0 12px!important;}
+.atlas-map-section .atlas-period-note {border-bottom:1px solid var(--line);padding-bottom:12px;}
+.atlas-main .atlas-control-row {padding:12px 0;border-bottom:1px solid var(--line);}
+.atlas-main .atlas-card p:not(.atlas-sub),.atlas-card ul {max-width:90ch;}
+
+.atlas-main h1 {font-size:26px;line-height:1.25;font-weight:700;letter-spacing:-.4px;margin:0 0 8px;}
+.atlas-main h2,.atlas-main h3 {font-size:17px;line-height:1.4;font-weight:700;margin:0 0 8px;}
+.atlas-lede {color:var(--muted);max-width:85ch;font-size:14px;margin:0 0 24px;}
+.atlas-sub {color:var(--muted);font-size:13px;margin:0 0 16px;}
+/* Sections share the page surface. A single rule marks each new question. */
+.atlas-card {min-width:0;background:#fff;border:0;border-top:1px solid var(--line);border-radius:0;box-shadow:none;padding:20px 0 8px;margin:0 0 24px;}
+.kpi-grid {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;margin:0 0 24px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);}
+.stat-card {min-width:0;min-height:0;border:0;border-right:1px solid var(--line);border-radius:0;box-shadow:none;background:#fff;padding:16px;margin:0;}
+.stat-card:first-child {padding-left:0;}
+.stat-card:last-child {border-right:0;}
+.stat-label {font-size:12px;line-height:1.45;color:var(--muted);font-weight:400;}
+.stat-value {font-size:23px;line-height:1.25;font-weight:700;color:var(--ink);margin:6px 0;font-variant-numeric:tabular-nums;}
+.stat-sub {font-size:12px;color:var(--muted);}
+.two-panels,.two-even {display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:32px;align-items:start;}
+.two-panels > *,.two-even > * {min-width:0;}
+.atlas-control-row {display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap;margin:8px 0;}
+.atlas-control-row .form-group {min-width:180px;flex:1;}
 .shiny-input-container {max-width:100%;}
-.form-control {border-radius:9px;border-color:#d3e0e3;}
-.btn-atlas,.btn-default {border-radius:9px;}
-.atlas-alert {background:#f2f7f6;border-left:3px solid #208b84;padding:12px 14px;color:#506c78;font-size:12px;border-radius:5px;margin-top:10px;}
-.atlas-badge {font-size:11px;font-weight:700;color:#0a6b68;background:#e9f4f2;display:inline-block;border-radius:20px;padding:4px 8px;}
-.atlas-control-row {display:flex;gap:15px;align-items:flex-end;flex-wrap:wrap;}
-.atlas-control-row .form-group {min-width:190px;flex:1;}
-.atlas-main table.dataTable thead th {font-size:12px;color:#526d78;}
-.atlas-main .dataTables_wrapper {font-size:12px;}
-/* USA choropleth: clear inputs and a generous full-width geographic canvas. */
-.atlas-map-controls {max-width:390px;margin:3px 0 0;}
-.atlas-map-controls label {font-size:11px;font-weight:800;letter-spacing:.6px;color:#567482;}
-.atlas-map-note {font-size:12px;color:#6d8490;margin:0 0 9px;line-height:1.5;}
-.atlas-map-note strong {color:#244355;}
-.js-plotly-plot .plotly .modebar {opacity:.35;transition:opacity .15s;}
-.js-plotly-plot .plotly .modebar:hover {opacity:1;}
-
-
-/* About Us: three original teammate portraits, precisely circular-clipped. */
-.about-eyebrow {font-size:11px;letter-spacing:2px;font-weight:800;text-transform:uppercase;color:#19857f;margin:0 0 8px;}
-.team-grid {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;margin:10px 0 22px;align-items:stretch;}
-.team-card {background:white;border:1px solid #e2eaea;border-radius:15px;box-shadow:0 2px 12px rgba(10,36,44,.03);padding:27px;display:flex;flex-direction:column;min-height:420px;align-items:flex-start;}
-.team-photo-shell {width:170px;height:170px;border-radius:50%;overflow:hidden;border:6px solid #f5f7f7;box-shadow:0 2px 12px rgba(10,36,44,.08);background:#eef3f4;margin:0 auto 22px;align-self:center;}
-.team-photo {width:100%;height:100%;display:block;object-fit:cover;object-position:center center;}
-.team-card .team-name {font-size:22px;font-weight:800;margin:0 0 4px;letter-spacing:-.6px;color:#193c47;}
-.team-discipline {color:#15807a;font-size:12px;font-weight:800;letter-spacing:.2px;margin-bottom:12px;}
-.team-card .team-bio {font-size:13px;line-height:1.75;color:#5c7581;margin-bottom:20px;}
-.team-link {margin-top:auto;display:inline-block;align-self:flex-start;background:#0c7872;color:white!important;text-decoration:none!important;border-radius:9px;padding:11px 14px;font-size:12px;font-weight:750;}
-.team-link:hover,.team-link:focus {background:#085e5a;color:white!important;}
-@media(max-width:1120px){.team-grid{grid-template-columns:1fr 1fr;}}
-@media(max-width:780px){.team-grid{grid-template-columns:1fr;}.team-card{min-height:0;}}
-@media(max-width:700px) {.atlas-shell{display:block}.atlas-sidebar{position:relative;width:100%;height:auto;min-width:0;padding:16px}.atlas-main{padding:18px}.atlas-main h1{font-size:27px}.kpi-grid{grid-template-columns:repeat(2,1fr)}}
+label {font-size:13px;font-weight:700;}
+.form-control,.selectize-input {border:1px solid #8798a7;border-radius:3px;box-shadow:none;color:var(--ink);background:#fff;font-size:14px;}
+.selectize-input {min-height:38px;padding:8px 10px;}
+.selectize-dropdown {border-color:#8798a7;border-radius:3px;font-size:14px;}
+.selectize-dropdown .active {background:#e0eafa;color:var(--accent-dark);}
+.selectize-dropdown .selected {font-weight:700;}
+.btn-default,.btn-atlas {background:#fff;color:var(--accent-dark);border:1px solid #8798a7;border-radius:3px;padding:8px 12px;min-height:38px;white-space:normal;box-shadow:none;font-size:13px;font-weight:700;}
+.btn-default:hover,.btn-atlas:hover {background:#eaf0f8;border-color:var(--accent);color:var(--accent-dark);}
+.btn-default:active,.btn-atlas:active {background:#d9e6f8;box-shadow:none;}
+/* Visible keyboard focus, independent of selected or hover states. */
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,
+.atlas-sidebar .action-button:focus-visible,.selectize-input.focus {
+  outline:3px solid var(--accent);outline-offset:3px;box-shadow:none;
+}
+.btn:disabled,.btn.disabled,.btn[aria-disabled='true'],input:disabled,select:disabled,
+.selectize-control.disabled .selectize-input {background:#edf0f3!important;color:#596775!important;border-color:#bac4ce!important;opacity:1;cursor:not-allowed;box-shadow:none;}
+.atlas-alert {font-size:13px;line-height:1.6;background:var(--soft);border:0;border-left:3px solid #8798a7;border-radius:0;padding:12px 16px;color:var(--muted);margin-top:16px;}
+.atlas-badge {font-size:12px;color:var(--muted);display:inline-block;margin-top:8px;}
+.atlas-period-note {font-size:13px;line-height:1.5;color:var(--ink);margin:8px 0 16px;overflow-wrap:anywhere;}
+.atlas-period-note strong {font-weight:700;}
+.atlas-definition {display:block;font-size:12px;color:var(--muted);margin-top:4px;max-width:95ch;}
+.atlas-warning {display:block;font-size:12px;color:var(--warning);margin-top:6px;}
+.atlas-map-controls {max-width:380px;margin:12px 0 0;}
+.atlas-map-note {font-size:12px;color:var(--muted);margin:8px 0;}
+.js-plotly-plot .plotly .modebar {opacity:1;}
+/* Tables use the same rules, type, and numerical rhythm as the charts. */
+.atlas-main .dataTables_wrapper {width:100%;overflow-x:auto;font-size:13px;padding:4px 0 12px;}
+.atlas-main table.dataTable {width:100%!important;border-collapse:collapse!important;border-bottom:1px solid var(--line)!important;font-variant-numeric:tabular-nums;}
+.atlas-main table.dataTable thead th {background:var(--soft);color:var(--ink);font-size:12px;font-weight:700;border-bottom:1px solid #8798a7;padding:10px 12px;vertical-align:bottom;}
+.atlas-main table.dataTable tbody td {padding:10px 12px;border-top:1px solid #e4e9ed;vertical-align:top;}
+.atlas-main table.dataTable tbody tr {background:#fff;}
+.atlas-main table.dataTable tbody tr:nth-child(even) {background:#f7f9fb;}
+.atlas-main table.dataTable tbody tr:hover {background:#eaf0f8;}
+.atlas-main table.dataTable th:not(:first-child),.atlas-main table.dataTable td:not(:first-child) {text-align:right;}
+#route_table table.dataTable th:last-child,#route_table table.dataTable td:last-child {text-align:left;}
+.atlas-main .dataTables_filter input,.atlas-main .dataTables_length select {border:1px solid #8798a7;border-radius:3px;padding:6px;background:#fff;color:var(--ink);}
+.atlas-main .dataTables_info,.atlas-main .dataTables_length,.atlas-main .dataTables_filter {color:var(--muted);font-size:12px;margin-bottom:12px;}
+.atlas-main .dataTables_paginate .paginate_button {border-radius:3px!important;background:#fff!important;color:var(--ink)!important;}
+.atlas-main .dataTables_paginate .paginate_button.current {border-color:var(--accent)!important;background:#e0eafa!important;color:var(--accent-dark)!important;font-weight:700;}
+.atlas-main .dataTables_paginate .paginate_button:hover {border-color:var(--accent)!important;background:#eaf0f8!important;color:var(--ink)!important;}
+.atlas-main .dataTables_paginate .paginate_button.disabled {color:#596775!important;background:#edf0f3!important;border-color:transparent!important;cursor:not-allowed;}
+.about-eyebrow {font-size:12px;font-weight:700;color:var(--muted);margin:0 0 8px;}
+.team-grid {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:32px;margin:24px 0 32px;}
+.team-card {display:flex;flex-direction:column;align-items:flex-start;padding:20px 0 0;border-top:1px solid var(--line);background:#fff;min-height:0;}
+.team-photo-shell {width:112px;height:112px;border-radius:50%;overflow:hidden;background:var(--soft);margin:0 0 16px;}
+.team-photo {width:100%;height:100%;display:block;object-fit:cover;object-position:center;}
+.team-card .team-name {font-size:18px;margin:0 0 4px;}
+.team-discipline {font-size:12px;color:var(--muted);font-weight:700;margin-bottom:12px;}
+.team-bio {font-size:14px;color:var(--muted);line-height:1.6;}
+.team-link {margin-top:auto;color:var(--accent-dark);font-size:13px;font-weight:700;text-decoration:underline;text-underline-offset:3px;padding:8px 0;}
+.team-link:hover {color:var(--accent);text-decoration-thickness:2px;}
+.atlas-card li {margin-bottom:8px;}
+@media(max-width:1150px) {
+  .two-even,.two-panels {grid-template-columns:minmax(0,1fr);gap:0;}
+  .kpi-grid {grid-template-columns:repeat(2,minmax(0,1fr));}
+  .stat-card:nth-child(2) {border-right:0;}
+  .stat-card:nth-child(n+3) {border-top:1px solid var(--line);}
+  .stat-card:nth-child(3) {padding-left:0;}
+  .team-grid {grid-template-columns:repeat(2,minmax(0,1fr));gap:24px;}
+}
+@media(max-width:760px) {
+  .atlas-shell {display:block;}
+  .atlas-sidebar {position:relative;width:100%;min-width:0;height:auto;border-right:0;border-bottom:1px solid var(--line);padding:16px;}
+  .atlas-brand {font-size:20px;padding:0 0 12px;}
+  .atlas-brand br {display:none;}
+  .atlas-brand small {margin-top:4px;}
+  .atlas-sidebar .action-button {display:inline-block;width:auto;min-height:44px;margin:2px;padding:10px;}
+  .atlas-sidebar hr {margin:16px 0;}
+  .atlas-sidebar .form-group {display:inline-block;vertical-align:top;width:calc(50% - 10px);margin-right:8px;}
+  .atlas-main {padding:24px 16px 32px;}
+  .atlas-main h1 {font-size:23px;}
+  .atlas-map-header {display:block;}
+  .atlas-map-header .atlas-map-controls {min-width:0;max-width:none;margin-top:16px;}
+  .atlas-nav-label {margin:12px 2px 4px;}
+  .atlas-main .atlas-control-row {padding:8px 0;}
+  .atlas-control-row {gap:12px;}
+  .atlas-control-row .form-group {min-width:100%;margin-bottom:8px;}
+  .atlas-lede {margin-bottom:20px;}
+  #state_map {height:360px!important;}
+  .team-grid {grid-template-columns:1fr;}
+  .stat-value {font-size:21px;}
+}
+@media(prefers-reduced-motion:reduce) {*,*::before,*::after {scroll-behavior:auto!important;transition:none!important;}}
 "
 
 atlas_definition <- paste(
@@ -402,19 +503,21 @@ atlas_irs_keys <- c("net_rate", "in_rate", "out_rate", "net_people",
                     "inflow_people", "outflow_people")
 
 
-# Presentation extension: CSS keeps the layout; JavaScript highlights the active tab.
-app_css <- paste0(app_css, "
-.atlas-sidebar .action-button.atlas-active {background:#28605f;color:#fff;border-left:4px solid #72d5c5;padding-left:8px;}
-.atlas-sidebar .action-button:focus-visible {outline:3px solid #b6e7de;outline-offset:2px;}
-.atlas-period-note {font-size:12px;line-height:1.6;color:#405e6c;margin:4px 0 12px;overflow-wrap:anywhere;}
-.atlas-period-note .atlas-definition {display:block;font-size:11px;color:#586f7b;margin-top:4px;}
-.atlas-period-note .atlas-warning {display:block;color:#8a471e;font-weight:650;margin-top:5px;}
-.two-even > *, .two-panels > * {min-width:0;}
-.atlas-card {min-width:0;}
-.atlas-main .dataTables_wrapper {width:100%;overflow-x:auto;}
-@media(max-width:1100px){.two-even,.two-panels{grid-template-columns:minmax(0,1fr);}.kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
-@media(max-width:700px){.atlas-card{padding:15px;}.atlas-control-row{display:block;}.atlas-control-row .form-group{min-width:0;width:100%;}.atlas-sidebar{position:relative;z-index:auto;}.stat-value{font-size:22px;}}
-@media(max-width:420px){.kpi-grid{grid-template-columns:1fr;}.atlas-main{padding:12px;}}")
+# Shared chart styling. Colors and typography change here; data do not.
+atlas_chart_theme <- function() {
+  theme_minimal(base_size = 12, base_family = "sans") +
+    theme(
+      text = element_text(color = "#182c3d"),
+      axis.text = element_text(color = "#526372"),
+      axis.title = element_text(size = 11),
+      panel.grid.minor = element_blank(),
+      panel.grid.major = element_line(color = "#e4e9ed", linewidth = 0.3),
+      plot.background = element_rect(fill = "white", color = NA),
+      panel.background = element_rect(fill = "white", color = NA),
+      plot.caption = element_text(color = "#526372", hjust = 0),
+      legend.position = "bottom"
+    )
+}
 
 # --------------- SHINY SERVER: REACTIVE DATA AND PLOTS ---------------
 server <- function(input, output, session) {
@@ -503,7 +606,7 @@ server <- function(input, output, session) {
       scale_min <- -spread
       scale_max <- spread
       map_colors <- list(
-        c(0, "#d98878"), c(0.5, "#f0f4f8"), c(1, "#2459aa")
+        c(0, "#b46228"), c(0.5, "#f0f4f8"), c(1, "#2459aa")
       )
     } else {
       values <- d$value[is.finite(d$value)]
@@ -549,7 +652,7 @@ server <- function(input, output, session) {
       colorbar = list(
         title = list(text = legend_title, side = "top"),
         thickness = 15, len = 0.67, x = 1.01, y = 0.5,
-        tickfont = list(size = 11, color = "#556b7a"),
+        tickfont = list(size = 11, color = "#526372"),
         outlinewidth = 0
       ),
       source = "state_choropleth",
@@ -567,7 +670,7 @@ server <- function(input, output, session) {
         margin = list(l = 0, r = 95, t = 8, b = 0),
         paper_bgcolor = "rgba(0,0,0,0)",
         plot_bgcolor = "rgba(0,0,0,0)",
-        font = list(family = "Arial, sans-serif", color = "#254252")
+        font = list(family = "Arial, sans-serif", color = "#182c3d")
       ) %>%
       config(displaylogo = FALSE, responsive = TRUE, scrollZoom = FALSE,
              modeBarButtonsToRemove = c("lasso2d", "select2d"))
@@ -607,7 +710,8 @@ server <- function(input, output, session) {
     d <- view_data()
     s <- filter(d, abbr == selected_state())
     if (!nrow(s)) return(NULL)
-    div(class = "atlas-alert",
+    div(class = "atlas-selection",
+        tags$span(class = "atlas-selection-label", "Selected state"),
         tags$b(paste0(s$state, " (", s$abbr, ")")), tags$br(),
         "Reported net IRS exemptions: ", tags$b(fmt_signed(s$net_people, 0)), " · ",
         "2020–25 growth: ", tags$b(paste0(fmt_signed(s$population_growth_pct, 2), "%")),
@@ -624,9 +728,9 @@ server <- function(input, output, session) {
     take$kind <- ifelse(take$net_rate >= 0, "Net gain", "Net loss")
     ggplot(take, aes(reorder(label, net_rate), net_rate, fill = kind)) +
       geom_bar(stat = "identity", width = .7) + coord_flip() +
-      scale_fill_manual(values = c("Net gain" = "#16887e", "Net loss" = "#dd8766")) +
+      scale_fill_manual(values = c("Net gain" = "#2459aa", "Net loss" = "#b46228")) +
       labs(x = NULL, y = metric_labels[["net_rate"]], caption = "* Partial IRS route data") +
-      theme_minimal(base_size = 11) +
+      atlas_chart_theme() +
       theme(legend.position = "none", panel.grid.major.y = element_blank())
   })
   
@@ -657,16 +761,19 @@ server <- function(input, output, session) {
     line_d$y <- predict(fit, newdata = line_d)
     p <- plot_ly(d, x = ~x, y = ~y, text = ~tip, customdata = ~abbr,
                  type = "scatter", mode = "markers", hoverinfo = "text",
-                 marker = list(color = ifelse(d$abbr == selected_state(), "#da7b55", "#16887e"),
+                 marker = list(color = ifelse(d$abbr == selected_state(), "#b46228", "#2459aa"),
                                symbol = ifelse(partial, "diamond-open", "circle"), size = 11,
                                line = list(width = 1.5)), source = "scatter", showlegend = FALSE)
     p <- add_lines(p, data = line_d, x = ~x, y = ~y, inherit = FALSE,
                    hoverinfo = "skip", showlegend = FALSE,
-                   line = list(color = "#dd8766", dash = "dash", width = 3))
-    layout(p, xaxis = list(title = metric_labels[[input$x_metric]], automargin = TRUE),
-           yaxis = list(title = metric_labels[[input$y_metric]], automargin = TRUE),
+                   line = list(color = "#b46228", dash = "dash", width = 3))
+    layout(p, xaxis = list(title = metric_labels[[input$x_metric]], automargin = TRUE,
+                           gridcolor = "#e4e9ed", zeroline = FALSE),
+           yaxis = list(title = metric_labels[[input$y_metric]], automargin = TRUE,
+                        gridcolor = "#e4e9ed", zeroline = FALSE),
            margin = list(l = 70, r = 15, b = 85, t = 15),
-           paper_bgcolor = "white", plot_bgcolor = "white") %>%
+           paper_bgcolor = "white", plot_bgcolor = "white",
+           font = list(family = "Arial, sans-serif", size = 12, color = "#182c3d")) %>%
       config(displaylogo = FALSE, responsive = TRUE)
   })
   
@@ -748,11 +855,11 @@ server <- function(input, output, session) {
     d <- route_data()
     validate(need(nrow(d) > 0, "No valid interstate route records available."))
     ggplot(d, aes(x = reorder(other_state, individuals), y = individuals)) +
-      geom_bar(stat = "identity", fill = if (input$route_direction == "in") "#16887e" else "#dd8766",
+      geom_bar(stat = "identity", fill = if (input$route_direction == "in") "#2459aa" else "#b46228",
                width = .75) + coord_flip() +
       labs(x = NULL, y = "Reported IRS exemptions (N2)") +
       scale_y_continuous(labels = function(x) format(x, big.mark = ",", trim = TRUE)) +
-      theme_minimal(base_size = 11) +
+      atlas_chart_theme() +
       theme(panel.grid.major.y = element_blank(),
             plot.margin = margin(10, 15, 10, 5))
   })
@@ -865,11 +972,11 @@ server <- function(input, output, session) {
       scale_shape_manual(values = c("FALSE" = 16, "TRUE" = 5),
                          breaks = c(FALSE, TRUE), labels = c("Complete routes", "Partial routes"),
                          name = "IRS coverage") +
-      scale_color_manual(values = c("#16887e", "#dd8766")) +
+      scale_color_manual(values = c("#2459aa", "#b46228")) +
       scale_x_continuous(breaks = sort(unique(d$year))) +
       labs(x = if (key %in% atlas_irs_keys) "IRS period end year" else "Year",
            y = if (key == "pop_index") "Population change from 2020 (%)" else metric_labels[[key]],
-           color = "State") + theme_minimal(base_size = 12) +
+           color = "State") + atlas_chart_theme() +
       theme(legend.position = "bottom", panel.grid.minor = element_blank())
     if (!any(d$partial)) p <- p + guides(shape = "none")
     ggplotly(p, tooltip = "text", source = "trends") %>%
@@ -3386,351 +3493,6 @@ team_photo_data <- list(
 )
 # ------------------------------------
 
-<<<<<<< HEAD
-# -------------------- LOAD THE 15 PROVIDED CLEAN CSV FILES --------------------
-# Locate supplied CSV files automatically, regardless of whether RStudio starts
-# in the repo root or in the Shiny subfolder.
-repo_candidates <- unique(c(
-  getwd(),
-  file.path(getwd(), "American_Migration_Atlas_Shiny"),
-  file.path(getwd(), "Atlas_Team_Photos_Ready")
-))
-repo_hits <- repo_candidates[file.exists(file.path(repo_candidates,
-                                                   "state_population_growth_clean.csv"))]
-if (length(repo_hits) == 0L) {
-  stop("Could not locate state_population_growth_clean.csv. Keep the supplied CSVs " ,
-       "beside app.R or in American_Migration_Atlas_Shiny.")
-}
-repo_dir <- normalizePath(repo_hits[1], mustWork = TRUE)
-read_source <- function(filename) {
-  path <- file.path(repo_dir, filename)
-  if (!file.exists(path)) stop("Missing CSV in your app folder: ", filename)
-  read.csv(path, check.names = FALSE, stringsAsFactors = FALSE,
-           fileEncoding = "UTF-8-BOM", na.strings = c("NA", "", "N/A"))
-}
-as_number <- function(x) {
-  suppressWarnings(as.numeric(gsub("[$,% ]", "", as.character(x))))
-}
-canon_fips <- function(x) sprintf("%02d", as.integer(as_number(x)))
-period_labels <- c("1920" = "2019–2020", "2021" = "2020–2021",
-                   "2122" = "2021–2022", "2223" = "2022–2023")
-
-# The new population file has only 2020 and 2025 endpoints, NOT 2021–2024.
-raw_pop <- read_source("state_population_growth_clean.csv")
-stopifnot(all(c("STATE", "NAME", "POPESTIMATE2020", "POPESTIMATE2025",
-                "population_growth_pct") %in% names(raw_pop)))
-pop <- raw_pop[raw_pop$NAME %in% state.name, , drop = FALSE]
-pop <- data.frame(
-  fips = canon_fips(pop$STATE), state = pop$NAME,
-  abbr = state.abb[match(pop$NAME, state.name)],
-  population_2020 = as_number(pop$POPESTIMATE2020),
-  population_2025 = as_number(pop$POPESTIMATE2025),
-  population_growth_pct = as_number(pop$population_growth_pct),
-  stringsAsFactors = FALSE
-)
-pop <- pop[order(pop$state), , drop = FALSE]
-stopifnot(nrow(pop) == 50L, !anyDuplicated(pop$fips), !anyNA(pop))
-stopifnot(all(abs(pop$population_growth_pct -
-                    100 * (pop$population_2025 - pop$population_2020) / pop$population_2020) < 0.011))
-
-# Column names across the six ACS exports differ; identify each metric
-# by a precise column match rather than positional assumptions.
-find_col <- function(d, regex, label) {
-  hits <- grep(regex, names(d), value = TRUE, ignore.case = TRUE, perl = TRUE)
-  if (length(hits) != 1L)
-    stop("ACS column error for ", label, ": ", length(hits),
-         " matches (", paste(hits, collapse = " | "), ")")
-  as_number(d[[hits]])
-}
-
-load_acs_year <- function(year) {
-  filename <- sprintf("ACS_%d_state_new.csv", year)
-  if (!file.exists(file.path(repo_dir, filename)) && year == 2024L) {
-    filename <- "ACS_2024_state_new(1).csv"  # Original uploaded filename
-  }
-  d <- read_source(filename)
-  d$fips_key <- canon_fips(d$FIPS)
-  d <- d[d$fips_key %in% pop$fips, , drop = FALSE]
-  stopifnot(nrow(d) == 50L, !anyDuplicated(d$fips_key))
-  
-  poverty_cols <- grep(
-    "^Population for Whom Poverty Status Is Determined:.*(Under \\.50|\\.50 to \\.74|\\.75 to \\.99)$",
-    names(d), value = TRUE, ignore.case = TRUE
-  )
-  if (length(poverty_cols) != 3L) {
-    stop("Expected 3 below-poverty categories in ", filename,
-         "; found ", length(poverty_cols))
-  }
-  poverty_below <- rowSums(sapply(d[poverty_cols], as_number), na.rm = FALSE)
-  labor_force <- find_col(d,
-                          "^Civilian Population in Labor Force 16 Years and Over:?$", "labor force")
-  poverty_total <- find_col(d,
-                            "^Population for Whom Poverty Status Is Determined:?$", "poverty total")
-  safe_pct <- function(num, den) ifelse(is.finite(den) & den > 0,
-                                        100 * num / den, NA_real_)
-  
-  out <- data.frame(
-<<<<<<< HEAD
-    fips = fips,
-    acs_year = as.integer(year),
-    median_income = find_col(d, "^Median Household Income", "household income"),
-    
-    
-    
-    
-=======
-    fips = d$fips_key, acs_year = as.integer(year),
-    median_income = find_col(d, "^Median Household Income", "median income"),
-    median_home_value = find_col(d,
-                                 "^(Median Value|Median House Value)$", "median home value"),
-    median_rent = find_col(d, "^Median Gross Rent$", "median rent"),
-    median_rent_pct = find_col(d,
-                               "^Median Gross Rent as a Percentage", "median rent as % of income"),
-    unemployment_pct = safe_pct(find_col(d,
-                                         "^Civilian Population in Labor Force 16 Years and Over: Unemployed$",
-                                         "unemployed"), labor_force),
-    poverty_pct = safe_pct(poverty_below, poverty_total),
-    commute_minutes = find_col(d, "^Average Commute to Work", "commute time"),
-    stringsAsFactors = FALSE
-  )
-  out
-}
-acs_all <- do.call(rbind, lapply(2019:2024, load_acs_year))
-stopifnot(nrow(acs_all) == 300L)
-
-# The paired inflow and outflow files are two representations of the SAME
-# migration routes, so do NOT add the two files together.
-# Use incoming routes as one canonical list, and validate the paired outgoing
-# file's origin/destination keys and N1/N2 counts for parity.
-load_irs_period <- function(period) {
-  in_csv <- read_source(paste0("state_inflow_clean_", period, ".csv"))
-  out_csv <- read_source(paste0("state_outflow_clean_", period, ".csv"))
-  required <- c("year", "origin_state", "destination_state", "origin_fips",
-                "destination_fips", "tax_returns", "exemptions", "agi_thousands")
-  stopifnot(all(required %in% names(in_csv)), all(required %in% names(out_csv)))
-  for (d in list(in_csv, out_csv)) {
-    if (anyDuplicated(paste(d$origin_fips, d$destination_fips)))
-      stop("Duplicate origin-destination pairs in IRS file")
-  }
-  a_key <- paste(canon_fips(in_csv$origin_fips), canon_fips(in_csv$destination_fips))
-  b_key <- paste(canon_fips(out_csv$origin_fips), canon_fips(out_csv$destination_fips))
-  if (!setequal(a_key, b_key)) stop("Inflow and outflow route pairs differ in ", period)
-  b <- out_csv[match(a_key, b_key), , drop = FALSE]
-  for (field in c("tax_returns", "exemptions")) {
-    x <- as_number(in_csv[[field]])
-    y <- as_number(b[[field]])
-    if (!isTRUE(all.equal(x, y, check.attributes = FALSE)))
-      stop("IRS inflow/outflow counts disagree for ", field, " in ", period)
-  }
-  # Two historic pairs have AGI differences of $1,000 between source views.
-  # Canonical inflow AGI is retained without double-counting either view.
-  flows <- data.frame(
-    period = period,
-    period_label = unname(period_labels[[period]]),
-    origin_state = in_csv$origin_state,
-    destination_state = in_csv$destination_state,
-    origin_fips = canon_fips(in_csv$origin_fips),
-    destination_fips = canon_fips(in_csv$destination_fips),
-    returns = as_number(in_csv$tax_returns),
-    individuals = as_number(in_csv$exemptions),
-    agi_thousands = as_number(in_csv$agi_thousands),
-    stringsAsFactors = FALSE
-  )
-  # D.C. is in the source flow universe; it is a legitimate migration partner.
-  # Limit map/summary metrics to the 50 states using pop$fips.
-  all_geographies <- union(flows$origin_fips, flows$destination_fips)
-  stopifnot(length(all_geographies) == 51L)
-  summary <- do.call(rbind, lapply(seq_len(nrow(pop)), function(i) {
-    f <- pop$fips[i]
-    arrivals <- flows[flows$destination_fips == f, , drop = FALSE]
-    departures <- flows[flows$origin_fips == f, , drop = FALSE]
-    # Each geography has 50 possible partners, including Washington, D.C.
-    missing_in <- 50L - sum(is.finite(arrivals$individuals))
-    missing_out <- 50L - sum(is.finite(departures$individuals))
-    p_in <- sum(arrivals$individuals, na.rm = TRUE)
-    p_out <- sum(departures$individuals, na.rm = TRUE)
-    data.frame(
-      fips = f, period = period,
-      inflow_returns = sum(arrivals$returns, na.rm = TRUE),
-      outflow_returns = sum(departures$returns, na.rm = TRUE),
-      inflow_people = p_in, outflow_people = p_out,
-      net_people = p_in - p_out,
-      # Fixed denominator: only 2020/2025 population endpoints were provided.
-      net_rate = 1000 * (p_in - p_out) / pop$population_2020[i],
-      in_rate = 1000 * p_in / pop$population_2020[i],
-      out_rate = 1000 * p_out / pop$population_2020[i],
-      missing_in = missing_in, missing_out = missing_out,
-      incomplete = (missing_in + missing_out) > 0L,
-      stringsAsFactors = FALSE
-    )
-  }))
-  list(totals = summary, flows = flows)
-}
-periods <- c("1920", "2021", "2122", "2223")
-irs_data <- lapply(periods, load_irs_period)
-irs_totals <- do.call(rbind, lapply(irs_data, `[[`, "totals"))
-irs_flows <- do.call(rbind, lapply(irs_data, `[[`, "flows"))
-stopifnot(nrow(irs_totals) == 200L)
-
-# State abbreviations, FIPS, and all original state names remain unmodified.
-
-# --------------- UI HELPERS / METRIC DEFINITIONS ---------------
-metric_labels <- c(
-  net_rate = "Net IRS exemptions per 1,000 (2020 population base)",
-  in_rate = "Incoming exemptions per 1,000 (2020 base)",
-  out_rate = "Outgoing exemptions per 1,000 (2020 base)",
-  net_people = "Net reported IRS exemptions (N2)",
-  inflow_people = "Incoming IRS exemptions (N2)",
-  outflow_people = "Outgoing IRS exemptions (N2)",
-  population_growth_pct = "Population growth, 2020–2025 (%)",
-  median_income = "Median household income ($)",
-  median_home_value = "Median home value ($)",
-  home_income_ratio = "Median home value / household income",
-  median_rent = "Median gross rent ($/month)",
-  median_rent_pct = "ACS median gross rent / household income (%)",
-  unemployment_pct = "ACS unemployment rate (%)",
-  poverty_pct = "ACS poverty rate (%)",
-  commute_minutes = "Average commute (minutes)"
-)
-pretty_choices <- function(keys) {
-  stats::setNames(keys, unname(metric_labels[keys]))
-}
-x_choices <- pretty_choices(c(
-  "median_income", "median_home_value", "home_income_ratio",
-  "median_rent", "median_rent_pct", "unemployment_pct", "poverty_pct",
-  "commute_minutes"
-))
-y_choices <- pretty_choices(c(
-  "net_rate", "in_rate", "out_rate", "net_people", "population_growth_pct"
-))
-map_choices <- pretty_choices(c(
-  "net_rate", "net_people", "in_rate", "out_rate",
-  "population_growth_pct", "median_income", "median_home_value",
-  "unemployment_pct", "poverty_pct", "median_rent_pct"
-))
-trend_choices <- c(
-  "Population change: 2020 vs. 2025 only" = "pop_index",
-  pretty_choices(c("net_people", "net_rate", "inflow_people", "outflow_people",
-                   "median_income", "median_home_value", "median_rent",
-                   "median_rent_pct", "unemployment_pct", "poverty_pct",
-                   "commute_minutes"))
-)
-state_choices <- stats::setNames(pop$abbr, pop$state)
-
-add_metric <- function(d, key) {
-  if (key == "home_income_ratio") {
-    d$value <- d$median_home_value / d$median_income
-  } else {
-    d$value <- d[[key]]
-  }
-  d$value[!is.finite(d$value)] <- NA_real_
-  d
-}
-fmt_num <- function(x, digits = 0) {
-  ifelse(is.na(x), "N/A", formatC(x, format = "f", digits = digits,
-                                  big.mark = ","))
-}
-fmt_signed <- function(x, digits = 1) {
-  ifelse(is.na(x), "N/A", paste0(ifelse(x > 0, "+", ""), fmt_num(x, digits)))
-}
-fmt_metric <- function(x, key) {
-  if (is.na(x)) return("N/A")
-  if (key %in% c("median_income", "median_home_value", "median_rent"))
-    return(paste0("$", fmt_num(x)))
-  if (key %in% c("population_growth_pct", "median_rent_pct",
-                 "unemployment_pct", "poverty_pct"))
-    return(paste0(fmt_num(x, 2), "%"))
-  if (key %in% c("net_people", "inflow_people", "outflow_people"))
-    return(fmt_signed(x, 0))
-  fmt_signed(x, 2)
-}
-
-ui_card <- function(title, ..., subtitle = NULL) {
-  div(class = "atlas-card", h3(title),
-      if (!is.null(subtitle)) p(class = "atlas-sub", subtitle), ...)
-}
-stat_box <- function(label, value, detail = "") {
-  div(class = "stat-card", div(class = "stat-label", label),
-      div(class = "stat-value", value), div(class = "stat-sub", detail))
-}
-
-# Team biographies and headshots. The source image assets are also provided
-# in www/ for easy editing, but the app works without that folder.
-team_card <- function(photo_src, name, discipline, bio, linkedin) {
-  div(class = "team-card",
-      div(class = "team-photo-shell",
-          tags$img(class = "team-photo", src = paste0("data:image/png;base64,", team_photo_data[[photo_src]]), alt = name)
-      ),
-      h3(class = "team-name", name),
-      div(class = "team-discipline", discipline),
-      p(class = "team-bio", bio),
-      tags$a(class = "team-link", href = linkedin,
-             target = "_blank", rel = "noopener noreferrer",
-             "View LinkedIn profile ↗")
-  )
-}
-
-app_css <- "
-body {background:#f5f7f7;color:#1d3440;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;}
-.atlas-shell {display:flex;min-height:100vh;margin:-15px;align-items:stretch;}
-.atlas-sidebar {width:238px;min-width:238px;padding:25px 15px 20px;background:#112a39;color:#e1eeee;position:sticky;top:0;height:100vh;overflow-y:auto;z-index:1000;}
-.atlas-brand {font-weight:800;font-size:22px;line-height:1.14;color:white;padding:7px 8px 23px;}
-.atlas-brand small {display:block;color:#a2c2c8;font-weight:600;font-size:11px;letter-spacing:1px;margin-top:10px;}
-.atlas-sidebar .action-button {background:transparent;border:0;border-radius:10px;color:#e1eeee;text-align:left;width:100%;padding:12px;margin:2px 0;box-shadow:none;font-weight:650;}
-.atlas-sidebar .action-button:hover,.atlas-sidebar .action-button:focus {background:#244353;color:white;}
-.atlas-sidebar label {color:#c1d3d6!important;font-size:11px;font-weight:750;letter-spacing:.35px;}
-.atlas-sidebar .form-group {margin-bottom:14px;}
-.atlas-sidebar .selectize-input {color:#223c48;}
-.atlas-sidebar hr {border-color:#36505e;margin:16px 0;}
-.atlas-sidebar .atlas-side-note {color:#a2c2c8;font-size:11px;line-height:1.6;}
-.atlas-main {flex:1;min-width:0;padding:28px 35px 48px;}
-.atlas-main h1 {font-size:34px;font-weight:800;letter-spacing:-1px;margin:5px 0 8px;}
-.atlas-main h3 {font-size:18px;font-weight:750;margin-top:0;margin-bottom:8px;}
-.atlas-lede,.atlas-sub {color:#6d8490;margin-bottom:20px;line-height:1.5;}
-.atlas-sub {font-size:12px;margin:-3px 0 16px;}
-.atlas-card,.stat-card {background:white;border:1px solid #e2eaea;border-radius:15px;padding:22px;margin:0 0 18px;box-shadow:0 2px 12px rgba(10,36,44,.03);}
-.kpi-grid {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:18px;}
-.stat-card {min-height:112px;margin-bottom:0;}
-.stat-label {font-size:12px;color:#667f8a;font-weight:600;}
-.stat-value {font-size:25px;font-weight:800;color:#173d49;margin-top:7px;}
-.stat-sub {font-size:11px;color:#8499a0;margin-top:6px;}
-.two-panels {display:grid;grid-template-columns:minmax(0,1.55fr) minmax(320px,1fr);gap:17px;align-items:start;}
-.two-even {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:17px;align-items:start;}
-.shiny-input-container {max-width:100%;}
-.form-control {border-radius:9px;border-color:#d3e0e3;}
-.btn-atlas,.btn-default {border-radius:9px;}
-.atlas-alert {background:#f2f7f6;border-left:3px solid #208b84;padding:12px 14px;color:#506c78;font-size:12px;border-radius:5px;margin-top:10px;}
-.atlas-badge {font-size:11px;font-weight:700;color:#0a6b68;background:#e9f4f2;display:inline-block;border-radius:20px;padding:4px 8px;}
-.atlas-control-row {display:flex;gap:15px;align-items:flex-end;flex-wrap:wrap;}
-.atlas-control-row .form-group {min-width:190px;flex:1;}
-.atlas-main table.dataTable thead th {font-size:12px;color:#526d78;}
-.atlas-main .dataTables_wrapper {font-size:12px;}
-/* USA choropleth: clear inputs and a generous full-width geographic canvas. */
-.atlas-map-controls {max-width:390px;margin:3px 0 0;}
-.atlas-map-controls label {font-size:11px;font-weight:800;letter-spacing:.6px;color:#567482;}
-.atlas-map-note {font-size:12px;color:#6d8490;margin:0 0 9px;line-height:1.5;}
-.atlas-map-note strong {color:#244355;}
-.js-plotly-plot .plotly .modebar {opacity:.35;transition:opacity .15s;}
-.js-plotly-plot .plotly .modebar:hover {opacity:1;}
-
-
-/* About Us: three original teammate portraits, precisely circular-clipped. */
-.about-eyebrow {font-size:11px;letter-spacing:2px;font-weight:800;text-transform:uppercase;color:#19857f;margin:0 0 8px;}
-.team-grid {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;margin:10px 0 22px;align-items:stretch;}
-.team-card {background:white;border:1px solid #e2eaea;border-radius:15px;box-shadow:0 2px 12px rgba(10,36,44,.03);padding:27px;display:flex;flex-direction:column;min-height:420px;align-items:flex-start;}
-.team-photo-shell {width:170px;height:170px;border-radius:50%;overflow:hidden;border:6px solid #f5f7f7;box-shadow:0 2px 12px rgba(10,36,44,.08);background:#eef3f4;margin:0 auto 22px;align-self:center;}
-.team-photo {width:100%;height:100%;display:block;object-fit:cover;object-position:center center;}
-.team-card .team-name {font-size:22px;font-weight:800;margin:0 0 4px;letter-spacing:-.6px;color:#193c47;}
-.team-discipline {color:#15807a;font-size:12px;font-weight:800;letter-spacing:.2px;margin-bottom:12px;}
-.team-card .team-bio {font-size:13px;line-height:1.75;color:#5c7581;margin-bottom:20px;}
-.team-link {margin-top:auto;display:inline-block;align-self:flex-start;background:#0c7872;color:white!important;text-decoration:none!important;border-radius:9px;padding:11px 14px;font-size:12px;font-weight:750;}
-.team-link:hover,.team-link:focus {background:#085e5a;color:white!important;}
-@media(max-width:1120px){.team-grid{grid-template-columns:1fr 1fr;}}
-@media(max-width:780px){.team-grid{grid-template-columns:1fr;}.team-card{min-height:0;}}
-@media(max-width:700px) {.atlas-shell{display:block}.atlas-sidebar{position:relative;width:100%;height:auto;min-width:0;padding:16px}.atlas-main{padding:18px}.atlas-main h1{font-size:27px}.kpi-grid{grid-template-columns:repeat(2,1fr)}}
-"
-=======
->>>>>>> 733e845 (More recognizable code from class; less AI code for our prototyped app)
 
 ui <- fluidPage(
   tags$head(tags$title("American Migration Atlas — R Shiny"),
@@ -3741,45 +3503,57 @@ ui <- fluidPage(
     $('#go_' + page).addClass('atlas-active').attr('aria-current', 'page');
   });
 });"))),
+  tags$a(href = "#atlas_main", class = "atlas-skip-link", "Skip to main content"),
   div(class = "atlas-shell",
-      div(class = "atlas-sidebar",
-          div(class = "atlas-brand", "↗ American", tags$br(), "Migration Atlas",
-              tags$small("BIOL 1185 · R SHINY")),
-          actionButton("go_overview", "▦  Overview", class = "atlas-active",
+      div(class = "atlas-sidebar", role = "navigation", "aria-label" = "Atlas navigation and data selection",
+          div(class = "atlas-brand", "American ", tags$br(), "Migration Atlas",
+              tags$small("Washington and Lee · BIOL 1185")),
+          div(class = "atlas-nav-label", "Explore the data"),
+          actionButton("go_overview", "Overview", class = "atlas-active",
                        "aria-current" = "page"),
-          actionButton("go_explore", "⌁  Explore factors"),
-          actionButton("go_routes", "⇄  Migration routes"),
-          actionButton("go_compare", "▥  Compare states"),
-          actionButton("go_trends", "↗  Trends"),
-          actionButton("go_about", "◉  About us"),
-          actionButton("go_methods", "ⓘ  Data & methods"),
+          actionButton("go_explore", "Explore factors"),
+          actionButton("go_routes", "Migration routes"),
+          actionButton("go_compare", "Compare states"),
+          actionButton("go_trends", "Trends"),
+          div(class = "atlas-nav-label", "About the project"),
+          actionButton("go_about", "About us"),
+          actionButton("go_methods", "Data & methods"),
           tags$hr(),
-          selectInput("irs_period", "IRS MIGRATION PERIOD",
+          div(class = "atlas-nav-label", "Reporting periods"),
+          selectInput("irs_period", "Migration period (IRS)",
                       choices = stats::setNames(names(period_labels), period_labels),
                       selected = "2223"),
-          selectInput("acs_year", "ACS REFERENCE YEAR",
+          selectInput("acs_year", "Survey year (ACS)",
                       choices = as.character(2019:2024), selected = "2024"),
           div(class = "atlas-side-note",
               "50 states · Four IRS migration periods · Six ACS reference years")
       ),
-      div(class = "atlas-main",
+      div(class = "atlas-main", id = "atlas_main", role = "main", tabindex = "-1",
           tabsetPanel(id = "page", type = "hidden",
                       tabPanel(title = "Overview", value = "overview",
-                               h1("Where is America moving?"),
+                               h1("U.S. migration overview"),
                                p(class = "atlas-lede",
                                  "Explore population change and matched IRS interstate migration. Select a metric or click a state on the interactive U.S. map."),
-                               uiOutput("overview_kpis"),
-                               ui_card("United States, state by state",
-                                       subtitle = "A geographic U.S. choropleth. Darker blue indicates higher values; coral indicates negative reported migration balances.",
-                                       div(class = "atlas-map-controls",
-                                           selectInput("map_metric", "COLOR STATES BY",
-                                                       choices = map_choices, selected = "net_rate")
-                                       ),
-                                       uiOutput("atlas_map_period"),
-                                       plotlyOutput("state_map", height = "550px"),
-                                       uiOutput("map_source_note"),
-                                       uiOutput("selected_details")
+                               # Atlas layout: heading and measure control share one row.
+                               tags$section(class = "atlas-card atlas-map-section",
+                                            div(class = "atlas-map-header",
+                                                div(class = "atlas-map-heading",
+                                                    h2("United States, state by state"),
+                                                    p(class = "atlas-sub",
+                                                      "Compare the 50 states. For net migration, blue shows gains and orange shows losses; other measures use a blue scale.")
+                                                ),
+                                                div(class = "atlas-map-controls",
+                                                    selectInput("map_metric", "Map measure",
+                                                                choices = map_choices, selected = "net_rate")
+                                                )
+                                            ),
+                                            uiOutput("atlas_map_period"),
+                                            plotlyOutput("state_map", height = "470px"),
+                                            uiOutput("map_source_note"),
+                                            uiOutput("selected_details")
                                ),
+                               h2(class = "atlas-summary-heading", "National summary · selected reporting periods"),
+                               uiOutput("overview_kpis"),
                                ui_card("States gaining & losing",
                                        subtitle = "Six highest and six lowest reported net migration proxies. * marks partial route data.",
                                        uiOutput("atlas_rank_period"),
@@ -3787,9 +3561,9 @@ ui <- fluidPage(
                                )
                       ),
                       tabPanel(title = "Explore factors", value = "explore",
-                               h1("Explore the relationships"),
+                               h1("Explore state-level relationships"),
                                p(class = "atlas-lede", "Choose a state-level factor and an outcome. Check the reporting periods below; points represent states, not individual movers."),
-                               ui_card("Ask your own research question",
+                               ui_card("Compare a factor and an outcome",
                                        div(class = "atlas-control-row",
                                            selectInput("x_metric", "X-axis: state-level factor",
                                                        choices = x_choices, selected = "median_rent_pct"),
@@ -3809,7 +3583,7 @@ ui <- fluidPage(
                                )
                       ),
                       tabPanel(title = "Migration routes", value = "routes",
-                               h1("Follow the migration routes"),
+                               h1("Interstate migration routes"),
                                p(class = "atlas-lede", "Explore which states sent or received exemptions represented on IRS interstate tax-return records. The partner list also includes Washington, D.C."),
                                ui_card("Explore interstate moves",
                                        div(class = "atlas-control-row",
@@ -3845,7 +3619,7 @@ ui <- fluidPage(
                                )
                       ),
                       tabPanel(title = "Trends", value = "trends",
-                               h1("Track changes over time"),
+                               h1("Changes over time"),
                                p(class = "atlas-lede", "Compare four annual IRS migration periods, ACS reference years 2019–2024, or the two available population estimates (2020 and 2025)."),
                                ui_card("Time-series comparison",
                                        div(class = "atlas-control-row",
@@ -3948,4 +3722,3 @@ ui <- fluidPage(
 )
 
 shinyApp(ui = ui, server = server)
->>>>>>> f1f2313814ca64911ab944a48d4ddd33085cc2f6
