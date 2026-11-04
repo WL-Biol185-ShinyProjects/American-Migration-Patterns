@@ -80,11 +80,16 @@ stopifnot(all(abs(pop$population_growth_pct -
 
 # Lessons 4, 6, and 10: one readable function cleans each yearly table.
 # The 2024 export uses different column names, so name those differences directly.
-load_acs_year <- function(year) {
+acs_filename <- function(year) {
   filename <- paste0("ACS_", year, "_state_new.csv")
   if (year == 2024 && !file.exists(file.path(repo_dir, filename))) {
     filename <- "ACS_2024_state_new(1).csv"
   }
+  filename
+}
+
+load_acs_year <- function(year) {
+  filename <- acs_filename(year)
   raw <- read_source(filename)
   raw$fips <- canon_fips(raw$FIPS)
   raw <- filter(raw, fips %in% pop$fips)
@@ -529,13 +534,45 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,
   .atlas-main {padding-top:var(--space-4);}
 }
 @media(max-width:380px) {.atlas-reporting-controls {grid-template-columns:1fr;}}
+.factor-key {display:flex;flex-wrap:wrap;align-items:center;gap:8px 20px;padding:10px 0;border-block:1px solid var(--line);font-size:13px;}
+.factor-key span {display:inline-flex;align-items:center;gap:8px;}
+.factor-key i {display:inline-block;flex:none;}
+.key-dot {width:11px;height:11px;background:#2459aa;border-radius:50%;}
+.key-partial {width:10px;height:10px;border:2px solid #2459aa;transform:rotate(45deg);}
+.key-fit {width:24px;border-top:3px dashed #b46228;}
+.atlas-file-list {padding-left:20px;overflow-wrap:anywhere;}
+.atlas-main details summary {cursor:pointer;font-weight:600;padding:5px 0;}
 @media(prefers-reduced-motion:reduce) {*,*::before,*::after {scroll-behavior:auto!important;transition:none!important;}}
 "
 
 atlas_definition <- paste(
-  "Migration proxy = IRS exemptions (N2), representing people on tax returns,",
-  "not all movers. Net = incoming minus outgoing.",
-  "All per-1,000 values divide N2 by the state's 2020 population and multiply by 1,000.")
+  "One IRS exemption represents one person counted on a tax return.",
+  "These counts estimate how many people moved between states.",
+  "Net means incoming minus outgoing. Rates per 1,000 use each state's 2020 population.")
+exemption_example <- paste(
+  "Two parents and their two children move from Virginia to South Carolina.",
+  "All four are listed on one tax return.",
+  "For this move, the IRS migration data count 1 tax return and 4 exemptions, one for each person.")
+
+partial_irs_heading <- "What does a partial IRS total mean?"
+partial_irs_text <- paste(
+  "At least one route into or out of the state has no reported count. The total adds up the routes we have.",
+  "For example, if the Virginia-to-South Carolina count is missing, we don’t know how many people have moved from Virginia to South Carolina. Missing does not mean zero.")
+
+# Link only the original CSVs the app loads. Use the same 2024 filename rule.
+source_groups <- list(
+  "Population estimates" = "state_population_growth_clean.csv",
+  "ACS surveys" = vapply(2019:2024, acs_filename, character(1)),
+  "IRS inflows" = paste0("state_inflow_clean_", names(period_labels), ".csv"),
+  "IRS outflows" = paste0("state_outflow_clean_", names(period_labels), ".csv")
+)
+source_files <- unname(unlist(source_groups))
+csv_link_id <- function(filename) paste0("source_csv_", match(filename, source_files))
+source_links <- function(files) {
+  tags$ul(class = "atlas-file-list", lapply(files, function(filename) {
+    tags$li(downloadLink(csv_link_id(filename), filename))
+  }))
+}
 atlas_irs_keys <- c("net_rate", "in_rate", "out_rate", "net_people",
                     "inflow_people", "outflow_people")
 
@@ -558,6 +595,19 @@ atlas_chart_theme <- function() {
 
 # --------------- SHINY SERVER: REACTIVE DATA AND PLOTS ---------------
 server <- function(input, output, session) {
+  # Each download copies the original file, retaining its rows and headings.
+  for (filename in source_files) {
+    local({
+      csv_name <- filename
+      output[[csv_link_id(csv_name)]] <- downloadHandler(
+        filename = csv_name, contentType = "text/csv",
+        content = function(path) {
+          if (!file.copy(file.path(repo_dir, csv_name), path, overwrite = TRUE))
+            stop("Could not download ", csv_name)
+        })
+    })
+  }
+  
   observeEvent(input$go_overview, {
     updateTabsetPanel(session, "page", selected = "overview")
   })
@@ -812,7 +862,7 @@ server <- function(input, output, session) {
     line_d$y <- predict(fit, newdata = line_d)
     p <- plot_ly(d, x = ~x, y = ~y, text = ~tip, customdata = ~abbr,
                  type = "scatter", mode = "markers", hoverinfo = "text",
-                 marker = list(color = ifelse(d$abbr == selected_state(), "#b46228", "#2459aa"),
+                 marker = list(color = "#2459aa",
                                symbol = ifelse(partial, "diamond-open", "circle"), size = 11,
                                line = list(width = 1.5)), source = "scatter", showlegend = FALSE)
     p <- add_lines(p, data = line_d, x = ~x, y = ~y, inherit = FALSE,
@@ -3653,6 +3703,8 @@ ui <- fluidPage(
                                             uiOutput("atlas_map_period"),
                                             plotlyOutput("state_map", height = "470px"),
                                             uiOutput("map_source_note"),
+                                            conditionalPanel("input.map_metric == 'net_rate' || input.map_metric == 'net_people' || input.map_metric == 'in_rate' || input.map_metric == 'out_rate'",
+                                                             tags$details(tags$summary("Example: 1 return, 4 exemptions"), p(exemption_example))),
                                             uiOutput("selected_details")
                                ),
                                h2(class = "atlas-summary-heading", "National summary · selected reporting periods"),
@@ -3675,6 +3727,14 @@ ui <- fluidPage(
                                        ),
                                        uiOutput("atlas_scatter_period"),
                                        plotlyOutput("scatter_plot", height = "460px"),
+                                       div(class = "factor-key", role = "group", "aria-label" = "Scatterplot legend",
+                                           tags$strong("How to read the plot"),
+                                           tags$span(tags$i(class = "key-dot", "aria-hidden" = "true"), "One state"),
+                                           conditionalPanel("input.y_metric == 'net_rate' || input.y_metric == 'in_rate' || input.y_metric == 'out_rate' || input.y_metric == 'net_people'",
+                                                            tags$span(tags$i(class = "key-partial", "aria-hidden" = "true"), "Open diamond = partial IRS data")),
+                                           tags$span(tags$i(class = "key-fit", "aria-hidden" = "true"), "Dashed line = linear fit")),
+                                       conditionalPanel("input.y_metric == 'net_rate' || input.y_metric == 'in_rate' || input.y_metric == 'out_rate' || input.y_metric == 'net_people'",
+                                                        tags$details(tags$summary(partial_irs_heading), p(partial_irs_text))),
                                        uiOutput("scatter_statistics"),
                                        downloadButton("download_scatter", "Download plotted state data (CSV)"),
                                        div(class = "atlas-alert", "A correlation is an association, not proof that an economic condition caused people to move.")
@@ -3782,26 +3842,28 @@ ui <- fluidPage(
                                  "All figures are recalculated from the 15 clean CSV files included in this project. The app uses no older housing table or annual population data that are not present in the new release."),
                                div(class = "two-even",
                                    ui_card("Files and reporting windows",
-                                           tags$ul(
-                                             tags$li(tags$b("Population endpoints 2020 and 2025: "),
-                                                     "state_population_growth_clean.csv"),
-                                             tags$li(tags$b("ACS reference years 2019–2024: "),
-                                                     "ACS_2019_state_new.csv through ACS_2024_state_new(1).csv"),
-                                             tags$li(tags$b("IRS periods 2019–20, 2020–21, 2021–22, 2022–23: "),
-                                                     "state_inflow_clean_*.csv and state_outflow_clean_*.csv")
-                                           ),
+                                           p("Download the original project CSVs by filename. The export below uses the selected reporting periods."),
+                                           lapply(names(source_groups), function(group) {
+                                             tags$details(tags$summary(group), source_links(source_groups[[group]]))
+                                           }),
                                            downloadButton("download_master", "Export selected state dataset (CSV)")
                                    ),
                                    ui_card("How we calculate metrics",
+                                           h3("What does an IRS exemption count?"),
+                                           p("In IRS migration data, each exemption represents one person listed on a tax return."),
+                                           p(exemption_example),
+                                           h3(partial_irs_heading), p(partial_irs_text),
+                                           h3("How to read the numbers"),
                                            tags$ul(
-                                             tags$li("Net IRS exemptions (N2) = reported incoming exemptions minus reported outgoing exemptions."),
-                                             tags$li("Rates per 1,000 = IRS exemptions divided by the state's 2020 population, multiplied by 1,000. All four IRS periods use this same fixed base."),
-                                             tags$li("Population growth (%) = (2025 population − 2020 population) / 2020 population × 100. The supplied growth column is rounded."),
-                                             tags$li("ACS population change (%) = (ACS reference-year population / ACS 2020 population − 1) × 100."),
-                                             tags$li("ACS unemployment (%) = unemployed civilians / civilian labor force × 100."),
-                                             tags$li("ACS poverty (%) = respondents in three below-1.00 poverty-ratio bands / relevant population × 100."),
-                                             tags$li("Home-to-income ratio = median home value / median household income."),
-                                             tags$li("The median gross rent percentage is an ACS field; it is not equivalent to a 30%-plus housing-cost burden rate.")
+                                             tags$li(tags$b("Net migration"), " = incoming exemptions − outgoing exemptions."),
+                                             tags$li(tags$b("Rate per 1,000"), " = (incoming, outgoing, or net exemptions ÷ the state’s 2020 population) × 1,000.",
+                                                     p("Example: The reported counts show 50 more people moved in than out. In a state with 10,000 residents in 2020, that’s a net gain of 5 per 1,000.")),
+                                             tags$li(tags$b("Population growth (%)"), " = (2025 population − 2020 population) ÷ 2020 population × 100."),
+                                             tags$li(tags$b("ACS population change (%)"), " = population change since 2020 ÷ 2020 population × 100. Both values come from ACS."),
+                                             tags$li(tags$b("Unemployment (%)"), " = unemployed people ÷ civilian labor force × 100."),
+                                             tags$li(tags$b("Poverty (%)"), " = people below the poverty line ÷ people with known poverty status × 100."),
+                                             tags$li(tags$b("Home-to-income ratio"), " = median home value ÷ median household income."),
+                                             tags$li(tags$b("Rent share (%)"), " = the median share of household income spent on rent, as reported by ACS.")
                                            )
                                    )
                                ),
