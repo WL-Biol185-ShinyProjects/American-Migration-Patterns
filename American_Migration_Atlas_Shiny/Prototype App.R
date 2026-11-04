@@ -1273,7 +1273,7 @@ ui <- fluidPage(
                                             plotlyOutput("state_map", height = "470px"),
                                             uiOutput("map_source_note"),
                                             conditionalPanel("input.map_metric == 'net_rate' || input.map_metric == 'net_people' || input.map_metric == 'in_rate' || input.map_metric == 'out_rate'",
-                                                             tags$details(tags$summary("Example: 1 return, 4 exemptions"), p(exemption_example))),
+                                                             tags$details(tags$summary("How IRS exemptions work: example"), p(exemption_example))),
                                             uiOutput("selected_details")
                                ),
                                h2(class = "atlas-summary-heading", "National summary · selected reporting periods"),
@@ -1454,3 +1454,4 @@ ui <- fluidPage(
 )
 
 shinyApp(ui = ui, server = server)
+#https://app.socialexplorer.com/my-home (link to the social explorer dataset website)
