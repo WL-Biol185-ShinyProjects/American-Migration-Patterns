@@ -1374,7 +1374,7 @@ ui <- fluidPage(
                                    team_card(
                                      "photo_kim", "Lucas Kim", "Economics · Class of 2027",
                                      paste0(
-                                       "Lucas studies economics with a minor in Latin American and Caribbean Studies. ",
+                                       "Lucas Kim studies economics with a minor in Latin American and Caribbean Studies. ",
                                        "His interests in environmental economics and public policy offer perspective ",
                                        "on economic opportunity and regional conditions."
                                      ),
@@ -1383,9 +1383,7 @@ ui <- fluidPage(
                                    team_card(
                                      "photo_chacon", "Lucas Chacon", "Neuroscience · Class of 2027",
                                      paste0(
-                                       "Lucas studies neuroscience and is a varsity swimmer. His behavioral science ",
-                                       "research includes human behavior, research data analysis and visualization ",
-                                       "using RStudio."
+                                       "Lucas is a Neuroscience major on the pre-dental track and an NCAA varsity swimmer at Washington and Lee University. He hopes to bring his interests in science and service together as a dentist by expanding access to quality dental care in underserved communities."
                                      ),
                                      "https://www.linkedin.com/in/lucas-chacon-0812a3360/"
                                    ),
