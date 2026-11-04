@@ -1,22 +1,3 @@
-# AMERICAN MIGRATION ATLAS — COURSE-ALIGNED REFACTOR
-# BIOL 1185 | Washington and Lee University
-# Files read: 1 population growth, 6 ACS years, 8 IRS flows.
-# Uses the same 15 CSVs as the original app; keep their filenames unchanged.
-# Required packages: shiny, ggplot2, dplyr, plotly, DT
-# Run with RStudio's "Run App" in your existing CSV project folder.
-# Course references:
-# https://positconnect.wlu.edu/bio185/c-06-data-transformation.html
-# https://positconnect.wlu.edu/bio185/c-07-exploring-data.html
-# https://positconnect.wlu.edu/bio185/c-10-joins.html
-# Course patterns: read.csv, %>%, filter, arrange, mutate, group_by,
-# summarize, joins, ggplot layers, and ordinary Shiny UI/server blocks.
-# Plotly, DT, and CSS/JavaScript are retained extensions.
-# They preserve existing behavior; they are not all shown in the linked lessons.
-# IRS route counts below are the fields named "exemptions" (N2 proxy)
-# and not a Census count of every person who moved.
-
-# Install these once in the RStudio console if needed:
-# install.packages(c("shiny", "ggplot2", "dplyr", "plotly", "DT"))
 library(shiny)
 library(ggplot2)
 library(dplyr)
