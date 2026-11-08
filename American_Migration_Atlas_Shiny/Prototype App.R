@@ -1,22 +1,3 @@
-# AMERICAN MIGRATION ATLAS — COURSE-ALIGNED REFACTOR
-# BIOL 1185 | Washington and Lee University
-# Files read: 1 population growth, 6 ACS years, 8 IRS flows.
-# Uses the same 15 CSVs as the original app; keep their filenames unchanged.
-# Required packages: shiny, ggplot2, dplyr, plotly, DT
-# Run with RStudio's "Run App" in your existing CSV project folder.
-# Course references:
-# https://positconnect.wlu.edu/bio185/c-06-data-transformation.html
-# https://positconnect.wlu.edu/bio185/c-07-exploring-data.html
-# https://positconnect.wlu.edu/bio185/c-10-joins.html
-# Course patterns: read.csv, %>%, filter, arrange, mutate, group_by,
-# summarize, joins, ggplot layers, and ordinary Shiny UI/server blocks.
-# Plotly, DT, and CSS/JavaScript are retained extensions.
-# They preserve existing behavior; they are not all shown in the linked lessons.
-# IRS route counts below are the fields named "exemptions" (N2 proxy)
-# and not a Census count of every person who moved.
-
-# Install these once in the RStudio console if needed:
-# install.packages(c("shiny", "ggplot2", "dplyr", "plotly", "DT"))
 library(shiny)
 library(ggplot2)
 library(dplyr)
@@ -1291,7 +1272,7 @@ ui <- fluidPage(
                                             plotlyOutput("state_map", height = "470px"),
                                             uiOutput("map_source_note"),
                                             conditionalPanel("input.map_metric == 'net_rate' || input.map_metric == 'net_people' || input.map_metric == 'in_rate' || input.map_metric == 'out_rate'",
-                                                             tags$details(tags$summary("How IRS exemptions work: example"), p(exemption_example))),
+                                                             tags$details(tags$summary("Example: 1 return, 4 exemptions"), p(exemption_example))),
                                             uiOutput("selected_details")
                                ),
                                h2(class = "atlas-summary-heading", "National summary · selected reporting periods"),
@@ -1475,4 +1456,3 @@ ui <- fluidPage(
 )
 
 shinyApp(ui = ui, server = server)
-#https://app.socialexplorer.com/my-home (link to the social explorer dataset website)
