@@ -34,7 +34,7 @@
 #   12. Putting the page together  <-- the final `ui` object is built here
 #
 # OBJECTS THIS FILE BORROWS FROM atlas_server.R (loaded first by app.R):
-#   irs_period_labels, irs_metric_keys, map_choices, x_axis_choices,
+# irs_period_labels, irs_metric_keys, data_source_websites, map_choices, x_axis_choices,
 #   y_axis_choices, trend_choices, state_choices, source_groups, csv_download_id
 # =============================================================================
 
@@ -426,6 +426,17 @@ data_and_methods_tab <- function() {
     p(class = "atlas-lede",
       "All figures are recalculated from the 15 clean CSV files included in this project. The app uses no older housing table or annual population data that are not present in the new release."),
 
+    # --- Where the original data came from (list is defined in atlas_server.R) ---
+    section_card(
+      "Data sources",
+      subtitle = "The original data were obtained from these websites.",
+      tags$ul(class = "atlas-file-list",
+              lapply(data_source_websites, function(source_website) {
+                tags$li(tags$b(source_website$name), tags$br(),
+                        tags$a(href = source_website$url, target = "_blank",
+                               rel = "noopener noreferrer", source_website$url))
+              }))),
+    
     div(class = "two-even",
         # --- Left: files you can download ---
         section_card(

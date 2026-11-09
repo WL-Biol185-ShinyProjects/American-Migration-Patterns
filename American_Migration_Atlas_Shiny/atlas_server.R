@@ -10,7 +10,8 @@
 #
 # THE FOUR CLEAN TABLES (everything else is built from these)
 #   state_population     50 rows   one row per state: 2020 & 2025 population
-#   acs_by_state_year   300 rows   50 states x ACS years 2019-2024
+#   acs_by_state_year   300 rows   American Community Survey (ACS), 
+#                                  50 states x ACS years 2019-2024
 #                                  (income, rent, home value, poverty, ...)
 #   irs_state_totals    200 rows   50 states x 4 IRS periods
 #                                  (people moving in / out / net)
@@ -53,46 +54,66 @@
 # 1. PACKAGES
 # ---------------------------------------------------------------------------
 # Install once in the RStudio console if needed:
-#   install.packages(c("shiny", "ggplot2", "dplyr", "plotly", "DT"))
+# The Shiny package - - - creates the interactive app.
+# dplyr package - - - organizes, filters, and combines data.
+# ggplot2 package - - - makes charts.
+# ploty package - - - adds interactive features such as hover and click information.
+# DT package - - - displays searchable and sortable tables.
 library(shiny)
 library(ggplot2)
 library(dplyr)
-library(plotly)   # interactive charts (hover, click)
-library(DT)       # searchable tables
+library(plotly) 
+library(DT)     
 
 
 # ---------------------------------------------------------------------------
 # 2. FINDING AND READING THE CSV FILES
 # ---------------------------------------------------------------------------
+# Make a list three possible places to find the CSVs: the current working
+# folder and two named subfolders. Remove any duplicate locations.
+# This only builds the list; it does not check or open the folders.
 
-# The CSVs may sit next to this file or in one of two project subfolders.
-# Pick the first folder that contains the population file.
+# getwd() - - - gets the folder R is currently working in.
+# file.path() - - - builds the locations of two subfolders inside it.
+# c() - - - groups those three locations together.
+# unique() - - - removes any repeated locations
+# data_folder_candidates - - - stores the results
+
 data_folder_candidates <- unique(c(
   getwd(),
   file.path(getwd(), "American_Migration_Atlas_Shiny"),
   file.path(getwd(), "Atlas_Team_Photos_Ready")
 ))
+# Check which folders contain the population CSV
 folders_containing_data <- data_folder_candidates[
   file.exists(file.path(data_folder_candidates, "state_population_growth_clean.csv"))
 ]
+# Stop if no matching folder was found
+# If no folder contains the population CSV, stop and show a message
+# explaining that the data could not be found.
 if (length(folders_containing_data) == 0L) {
   stop("Could not locate state_population_growth_clean.csv. Keep the supplied CSVs ",
        "beside app.R or in American_Migration_Atlas_Shiny.")
 }
+# Choose the folder to use
+# Choose the first matching folder and save its full address.
+# Report an error if R cannot ressolve that location.
 data_folder <- normalizePath(folders_containing_data[1], mustWork = TRUE)
 
 # Read one CSV from the data folder and make sure every column has a unique,
 # non-blank name (some ACS exports have blank or repeated headings).
 read_source_csv <- function(filename) {
+# Locate the requested file andf check that it exists
   csv_path <- file.path(data_folder, filename)
   if (!file.exists(csv_path)) stop("Missing CSV in your app folder: ", filename)
-
+# Read the file into a table
   csv_data <- read.csv(csv_path, check.names = FALSE, stringsAsFactors = FALSE,
                        fileEncoding = "UTF-8-BOM", na.strings = c("NA", "", "N/A"))
-
+# Identify and replace blank headings
   column_names <- names(csv_data)
   is_blank_name <- is.na(column_names) | trimws(column_names) == ""
   column_names[is_blank_name] <- paste0("unnamed_column_", which(is_blank_name))
+# Fix repeated headings and return the table
   names(csv_data) <- make.unique(column_names, sep = "_")
   csv_data
 }
@@ -115,19 +136,29 @@ to_two_digit_fips <- function(fips_values) {
 # ---------------------------------------------------------------------------
 
 # IRS periods. The code (e.g. "2122") is what appears in the CSV file names.
+# irs_period_codes - - - stores the short codes for our four IRS reporting periods.
+# irs_period_labels - - - connects each code to a readable year range
+# so the app can display labels such as "2019-2020".
+
 irs_period_codes <- c("1920", "2021", "2122", "2223")
 irs_period_labels <- c("1920" = "2019–2020", "2021" = "2020–2021",
                        "2122" = "2021–2022", "2223" = "2022–2023")
-# On the Trends chart, each IRS period is plotted at the year it ends.
+# irs_period_end_year - - - connects each IRS period code to its ending year.
+# For example, "1920" reprresents 22019-2020, so its ending year is 2020.
+# The L tells R to store each year as a whole number.
 irs_period_end_year <- c("1920" = 2020L, "2021" = 2021L,
                          "2122" = 2022L, "2223" = 2023L)
 
-# Each state has 50 possible migration partners (49 other states + D.C.).
-# If fewer than 50 routes have a reported count, the state's total is "partial".
+# Each state has 50 possible incoming routes and 50 outgoing routes:
+# connections with the 49 other states and Washington D.C.
+# Store this expected count as a whole number.
 ROUTES_PER_STATE <- 50L
 
-# Every measure the app can show. The names (left) are column names used in
-# the code; the text (right) is the label people see.
+# metric_labels - - - connects internal measure names to readable display labels.
+# Labels include units such as dollar signs, percentages, people, or minutes.
+# Keeping them together helps charts, tables, and drop downs use consistent wording.
+# This section stores labels; its does not calculate values.
+
 metric_labels <- c(
   net_per_1000             = "Net migration proxy per 1,000",
   inflow_per_1000          = "Incoming migration proxy per 1,000",
@@ -147,11 +178,13 @@ metric_labels <- c(
   avg_commute_minutes      = "Average commute (minutes)"
 )
 
-# Measures that come from the IRS migration files (all others are ACS/Census).
+# irs_metric_keys - - - lists the 6 measures that use IRS migration data.
+# Other code can use this list to recognize IRS measures and apply.
+# the appropriate reporting-period labels or data warnings.
 irs_metric_keys <- c("net_per_1000", "inflow_per_1000", "outflow_per_1000",
                      "net_exemptions", "inflow_exemptions", "outflow_exemptions")
 
-# "Net" measures can be negative, so the map uses a two-color scale for them.
+# diverging_metric_keys - - - List the measures that can show net migration losses or gains.
 diverging_metric_keys <- c("net_per_1000", "net_exemptions")
 
 
@@ -482,6 +515,18 @@ source_groups <- list(
 source_files <- unname(unlist(source_groups))
 # Each download link needs its own id, e.g. "source_csv_3".
 csv_download_id <- function(filename) paste0("source_csv_", match(filename, source_files))
+
+# The websites where the original data were obtained.
+# Shown in the "Data sources" card on the Data & methods tab (see atlas_ui.R).
+# To add or change a source, edit this list; the page updates automatically.
+data_source_websites <- list(
+  list(name = "American Community Survey (ACS) 5-year estimates",
+       url  = "https://app.socialexplorer.com/my-home"),
+  list(name = "IRS Migration Data",
+       url  = "https://www.irs.gov/statistics/soi-tax-stats-migration-data"),
+  list(name = "U.S. Census Bureau, State Population Totals and Components of Change: 2020-2025",
+       url  = "https://www2.census.gov/programs-surveys/popest/tables/2020-2025/state/totals/NST-EST2025-CHG.xlsx")
+)
 
 
 # ---------------------------------------------------------------------------
