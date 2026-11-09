@@ -291,7 +291,7 @@ migration_routes_tab <- function() {
                      uiOutput("route_chart_period_note"),
                      plotOutput("route_bar", height = "460px")),
         section_card("All available route records",
-                     subtitle = "N1 = tax returns; N2 = exemptions (a proxy for represented persons); AGI in millions of dollars.",
+                     subtitle = "N1 = tax returns (number of households migrating); N2 = exemptions (a proxy for represented persons migrating); AGI in millions of dollars.",
                      uiOutput("route_table_period_note"),
                      DTOutput("route_table"))),
 
@@ -406,7 +406,8 @@ about_tab <- function() {
     section_card(
       "Why we built American Migration Atlas",
       p("As part of our BIOL 1185 Visualizing Big Data project, we investigate where U.S. populations are changing and how interstate migration relates to rent, home values, employment, income and other state-level conditions."),
-      p("Our visualizations use publicly available Census, American Community Survey (ACS) and IRS data. We distinguish population growth from interstate migration and treat correlations as exploratory associations, not explanations of individual decisions."),
+      p("We were drawn to this project because of the breadth of data needed to examine this question. From American Community Survey data on economic factors like median home value, median income, IRS data on interstate migrations, and overall population data, we can begin to address this question."),
+      p("We stress the importance of seeing this project not as establishing causation between variables, but seeing how variables like median home value or unemployment rate correlates with the net migration a state faces."),
       tags$span(class = "atlas-badge", "Washington and Lee University · BIOL 1185")))
 }
 
