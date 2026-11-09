@@ -3688,3 +3688,4 @@ body(server) <- as.call(c(as.list(body(server)), list(atlas_server_updates)))
 
 shinyApp(ui = ui, server = server)
 >>>>>>> f1f2313814ca64911ab944a48d4ddd33085cc2f6
+
