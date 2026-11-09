@@ -483,6 +483,17 @@ source_files <- unname(unlist(source_groups))
 # Each download link needs its own id, e.g. "source_csv_3".
 csv_download_id <- function(filename) paste0("source_csv_", match(filename, source_files))
 
+# The websites where the original data were obtained.
+# Shown in the "Data sources" card on the Data & methods tab (see atlas_ui.R).
+# To add or change a source, edit this list; the page updates automatically.
+data_source_websites <- list(
+  list(name = "American Community Survey (ACS) 5-year estimates",
+       url  = "https://app.socialexplorer.com/my-home"),
+  list(name = "IRS Migration Data",
+       url  = "https://www.irs.gov/statistics/soi-tax-stats-migration-data"),
+  list(name = "U.S. Census Bureau, State Population Totals and Components of Change: 2020-2025",
+       url  = "https://www2.census.gov/programs-surveys/popest/tables/2020-2025/state/totals/NST-EST2025-CHG.xlsx")
+)
 
 # ---------------------------------------------------------------------------
 # 8. SMALL HELPER FUNCTIONS
