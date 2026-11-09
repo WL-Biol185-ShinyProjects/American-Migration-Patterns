@@ -1,46 +1,110 @@
+#Load's the app's tools
+#The Shiny package creates the interactive app.
+#The dplyr package organizes, filters, and combines data.
+#The ggplot2 package makes charts.
+# The ploty package adds interactive features such as hover information.
+#The DT package displays searchable and sortable tables.
 library(shiny)
 library(ggplot2)
 library(dplyr)
-# Extensions: Plotly supplies hover/click/zoom; DT supplies searchable tables.
 library(plotly)
 library(DT)
 
-# -------------------- LOAD THE 15 PROVIDED CLEAN CSV FILES --------------------
-# Locate supplied CSV files automatically, regardless of whether RStudio starts
-# in the repo root or in the Shiny subfolder.
+# repo_candidates - - - stores possible folders where our data might be.
+# unique() - - - removes repeated folder location so each appears only once.
+# getwd() - - - returns the folder R is currently working in.
+# file.path() - - - combines folder names into a complete location.
+# if (...) stop(...) - - - stops the app with a message if no matching folder exists.
+# repo_dir - - - stores the first matching folder as the location to use.
+# read_source() - - - opens a requested CSV file from that folder.
+
+# Store three possible locations where our CSV files might be:
+# getwd(), American_Migration_Atlas_Shiny, and Atlas_Team_Photos_Ready
+# the current working folder and two named subfolders.
+# Remove duplicate locations and save the result as repo_candidates.
+# This step only lists possible locations; it does not check or open them.
 repo_candidates <- unique(c(
   getwd(),
   file.path(getwd(), "American_Migration_Atlas_Shiny"),
   file.path(getwd(), "Atlas_Team_Photos_Ready")
 ))
+# repo_hits - - - stores the folders where the expected CSV was actually found.
+# repo_candidates - - - keeps only the folders whose checks returned TRUE.
+# file.exists - - - checks each complete location and returns TRUE if the file exists or FALSE if it does not.
+
+# Check each possible folder for state_population_growth_clean.csv.
+# Keep only the folder locations where that file exists.
+# Store those matching locations as repo_hits.
+# This checks for the file but does NOT open or read it.
 repo_hits <- repo_candidates[file.exists(file.path(repo_candidates,
                                                    "state_population_growth_clean.csv"))]
+
+# Count how many matching folders were found.
+# If the count is 0, stop the app and explain where to put the CSVs.
 if (length(repo_hits) == 0L) {
   stop("Could not locate state_population_growth_clean.csv. Keep the supplied CSVs " ,
        "beside app.R or in American_Migration_Atlas_Shiny.")
 }
+# repo_dir - - - The folder location the app will use to find its data
+# repo_hits[1] - - - selects the first folder where the population .csv was found.
+# normalizePath() - - - writes out that folder's full address on the computer.
+# mustWork = TRUE - - - require R to successfully find that location; otherwise, report an error.
 repo_dir <- normalizePath(repo_hits[1], mustWork = TRUE)
+
+# Create a reusable function called read_source.
+# filename is a placeholder for whichever CSV name we give it.
+# Everything inside { } belongs to this function
 read_source <- function(filename) {
+# path - - - a name that stores the file's location on my computer. (i.e. the file's address)
+# file.path - - - joins the folder location and filename to build that address.
+# if - - - only do this if the condition is true
+# file.exists  - - - checks whether a file exists at the given address. It answers TRUE for yes or FALSE for no.
+# Adding the ! reverses the answer, so !file.exists(path) checks whether the file is missing.
+# stop() - - - stops the code and displays an error message explaining the problem.
+# data - - - the name I give to the table after reading it from the CSV. It holds the file's contents inside R.
+# UTF-8-BOM - - - tells R how to read the file's text correctly. UTF-8 is a text format; BOM is a special marker that
+# may appear at the beginning of the file.
+# na.strings - - - a setting that tells R which text entries should be treated as missing information.
   path <- file.path(repo_dir, filename)
   if (!file.exists(path)) stop("Missing CSV in your app folder: ", filename)
   data <- read.csv(path, check.names = FALSE, stringsAsFactors = FALSE,
                    fileEncoding = "UTF-8-BOM", na.strings = c("NA", "", "N/A"))
-  # Some ACS exports have blank or repeated metadata headings. dplyr needs
-  # every column to have a nonempty, unique name. Keep the metric names intact.
+# column_names - - - a name that stores the table's column headings, such as "State" or "Total.Population".
+# names() - - - gets or changes those column headings. 
+# names(data) - - - retrieves them
+# names(data) <- replaces them
+# blank_names - - - stores a TRUE or FALSE for each heading. TRUE means the heading is missing, empty, 
+# or only spaces and needs a replacement.
+# is.na() - - -  checks whether something is missing. It returns TRUE for a missing value and FALSE otherwise. 
+# trimws - - -  removes spaces from the beginning and end of text. Here, it helps recognize a heading containing only spaces as empty.
+# paste0() - - - joins pieces of text together without adding spaces. For example, paste0("unnamed_column_", 3) produces
+# "unnamed_column_3".
+# which() - - - tells you the positions where a condition is TRUE. If the second and fifth headings are blank,
+# which(blank_names) returns 2 and 5.
+# make.unique() - - - makes repeated names different by adding numbered endings. With sep = "_", two headings
+# called "State" become "State" and "State_1".
   column_names <- names(data)
   blank_names <- is.na(column_names) | trimws(column_names) == ""
   column_names[blank_names] <- paste0("unnamed_column_", which(blank_names))
   names(data) <- make.unique(column_names, sep = "_")
   data
 }
+# as_number() - - - a function our code creates to turn text into numbers. 
+# It removes dollar signs, commas, percent signs, and spaces first.
 as_number <- function(x) {
   suppressWarnings(as.numeric(gsub("[$,% ]", "", as.character(x))))
 }
+
+# canon_flips() - - - a function our code creates to put state identification codes into a consistent two-digit format.
+# For example, 1 becomes "01", while 45 stays "45".
 canon_fips <- function(x) sprintf("%02d", as.integer(as_number(x)))
+
+# period_labels - - - stores readable year labels for the IRS period codes. 
+# For example, it connects "1920" with "2019-2020" so the app can display a clear reporting period.
 period_labels <- c("1920" = "2019–2020", "2021" = "2020–2021",
                    "2122" = "2021–2022", "2223" = "2022–2023")
 
-# This population-estimates file has 2020 and 2025 endpoints.
+# (Left off re-commenting here!!) This population-estimates file has 2020 and 2025 endpoints.
 # ACS population for reference years 2019–2024 is loaded separately below.
 raw_pop <- read_source("state_population_growth_clean.csv")
 stopifnot(all(c("STATE", "NAME", "POPESTIMATE2020", "POPESTIMATE2025",
