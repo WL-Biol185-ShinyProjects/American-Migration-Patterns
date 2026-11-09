@@ -440,8 +440,8 @@ data_and_methods_tab <- function() {
     div(class = "two-even",
         # --- Left: files you can download ---
         section_card(
-          "Files and reporting windows",
-          p("Download the original project CSVs by filename. The export below uses the selected reporting periods."),
+          "CSV Files",
+          p("Download the original project CSVs by filename. Files are sorted by same data source origin."),
           lapply(names(source_groups), function(group_name) {
             tags$details(tags$summary(group_name), source_links(source_groups[[group_name]]))
           }),
@@ -475,9 +475,7 @@ data_and_methods_tab <- function() {
         tags$li("AGI is measured in thousands of dollars. Some paired IRS files differ by $1,000 of AGI for a few historic routes; the inflow view is used consistently."),
         tags$li("IRS rates retain the fixed 2020 population-estimate denominator for consistency. ACS population is shown separately and is not substituted into these rates."),
         tags$li("ACS Total Population supplies reference-year observations for 2019–2024. Its percentage change uses ACS 2020 as the baseline. The separate 2020–2025 endpoint comparison uses the population-estimates file; these sources are not spliced into a single series."),
-        tags$li("ACS extracts may use overlapping multi-year samples, and survey-year dollar units vary. Confirm the Census product when interpreting change over time."),
-        tags$li("Comparing ACS attributes with migration does not reveal why individuals relocated or prove causal relationships."),
-        tags$li("The old standalone 2024 housing-cost-burden source was not supplied with this new dataset; that metric has been removed.")))
+        tags$li("Our study only examines correlation between state characteristics and migrations. Correlation is not necessarily causation.")))
   )
 }
 
