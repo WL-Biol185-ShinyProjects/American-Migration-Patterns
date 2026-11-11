@@ -1102,10 +1102,10 @@ server <- function(input, output, session) {
     correlation_table <- data.frame(
       Factor = unname(metric_labels[factor_keys]),
       `Pearson r` = round(correlations, 3),
-      `Absolute r` = round(abs(correlations), 3),
       check.names = FALSE
     )
-    correlation_table <- arrange(correlation_table, desc(`Absolute r`))
+    # Strongest correlation first, ignoring the + or - sign.
+    correlation_table <- arrange(correlation_table, desc(abs(`Pearson r`)))
     datatable(correlation_table, rownames = FALSE,
               options = list(pageLength = 9, dom = "t", ordering = FALSE))
   })
@@ -1368,6 +1368,8 @@ server <- function(input, output, session) {
                          name = "IRS coverage") +
       scale_color_manual(values = c("#2459aa", "#b46228")) +
       scale_x_continuous(breaks = sort(unique(plot_data$year))) +
+      scale_y_continuous(labels = function(y_values)
+        format(y_values, big.mark = ",", scientific = FALSE, trim = TRUE)) +
       labs(x = if (is_irs_metric) "IRS period end year" else "Year",
            y = y_axis_title, color = "State") +
       atlas_chart_theme() +
