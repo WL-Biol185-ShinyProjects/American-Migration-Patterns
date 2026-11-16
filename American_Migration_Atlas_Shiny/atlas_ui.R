@@ -260,6 +260,10 @@ explore_factors_tab <- function() {
     # --- Correlation ranking card ---
     section_card(
       "Compare correlations across factors",
+      
+      p(
+        "As migration patterns shifted during the COVID-19 era, Americans faced different economic and housing conditions across states. But were some factors more closely connected to migration than others? Compare the strength of these relationships to discover which state-level characteristics show the strongest connections to where Americans are moving."
+      ),
       subtitle = "Ranked by absolute Pearson correlation for the currently selected Y-axis outcome.",
       uiOutput("correlation_period_note"),
       DTOutput("correlation_table")))
@@ -278,11 +282,16 @@ explore_factors_tab <- function() {
 
 migration_routes_tab <- function() {
   tabPanel(
-    title = "Migration routes", value = "routes",
+    title = "Migration routes",
+    value = "routes",
+    
     h1("Interstate migration routes"),
-    p(class = "atlas-lede",
-      "Explore which states sent or received exemptions represented on IRS interstate tax-return records. The partner list also includes Washington, D.C."),
-
+    
+    p(
+      class = "atlas-lede",
+      "Every move tells a story of someone leaving one state behind to begin a new chapter in another. During the COVID-19 era, millions of Americans crossed state lines, reshaping communities across the country. Some states welcomed new residents, while others watched people leave. But where did these journeys begin, and where did they lead? Follow the migration routes to discover how states are connected through the movement of Americans."
+    ),
+    
     # --- State/direction picker with summary boxes ---
     section_card(
       "Explore interstate moves",
@@ -295,10 +304,20 @@ migration_routes_tab <- function() {
 
     # --- Chart and table side by side ---
     div(class = "two-even",
-        section_card("Top 10 interstate routes",
+        section_card(
+          "Top 10 interstate routes",
+          
+          p(
+            "While millions of Americans crossed state lines during the COVID-19 era, some migration routes were traveled far more than others. These movements reveal how certain destinations attracted larger numbers of people. But which routes experienced the greatest movement, and what do they tell us about changing migration patterns? Explore the top 10 interstate routes to see where Americans were heading."
+          ),
                      uiOutput("route_chart_period_note"),
                      plotOutput("route_bar", height = "460px")),
-        section_card("All available route records",
+        section_card(
+          "All available route records",
+          
+          p(
+            "Behind every migration route is a story of households leaving one state and beginning a new chapter in another. But how many households made these moves, how many people did they represent, and how much income moved with them? The IRS migration records reveal the scale of these journeys and the economic patterns behind interstate migration."
+          ),
                      subtitle = "N1 = tax returns (number of households migrating); N2 = exemptions (a proxy for represented persons migrating); AGI in millions of dollars.",
                      uiOutput("route_table_period_note"),
                      DTOutput("route_table"))),
