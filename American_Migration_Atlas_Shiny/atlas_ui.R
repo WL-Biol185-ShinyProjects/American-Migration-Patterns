@@ -156,7 +156,10 @@ overview_page_header <- function() {
     tags$header(class = "atlas-page-header",
                 h1("U.S. migration overview"),
                 p(class = "atlas-lede",
-                  "Where are Americans moving now? In the 1800’s, it was to the West Coast. In the late 1800’s, it was to the big cities and what is now the Rust Belt. For us, we seek to explore where Americans are moving just before and after the advent of COVID-19.  ")))
+                  "Where are Americans moving now? In the 1800’s, it was to the West Coast. In the late 1800’s, it was to the big cities and what is now the Rust Belt. For us, we seek to explore where Americans are moving just before and after the advent of COVID-19.  "),
+                tags$img(src = "OverviewPic1.png",
+                         alt = "https://www.history.com/articles/immigration-united-states-timeline",
+                         style = "max-width: 100%; height: auto; border-radius: 6px; margin-bottom: 16px;")))
 }
 
 # The "Map measure" dropdown. It is placed inside the shared controls bar
