@@ -233,7 +233,13 @@ explore_factors_tab <- function() {
       
       p(
         class = "atlas-lede",
-        "Throughout American history, people have moved in search of better opportunities. From the industrial boom that drew workers to Northern cities to the growth of the Sun Belt, economic and social conditions have shaped where Americans choose to live. The COVID-19 era brought new changes to these patterns, as housing costs, employment opportunities, and income continued to influence where people settled. But which of these factors are most closely related to the states gaining and losing residents? Explore how different state-level characteristics relate to migration patterns across the country."
+        "Throughout American history, people have moved in search of better opportunities. From the industrial boom that drew workers to Northern cities to the growth of the Sun Belt, economic and social conditions have shaped where Americans choose to live. The COVID-19 era brought new changes to these patterns, as housing costs, employment opportunities, and income continued to influence where people settled. But which of these factors are most closely related to the states gaining and losing residents? Explore how different state-level characteristics relate to migration patterns across the country.",
+        tags$figure(style = "margin: 0 0 16px;",
+                    tags$img(src = "ExploreFactorsPic1.png",
+                             alt = "https://www.thoughtco.com/levittown-long-island-1435787",
+                             style = "max-width: 100%; height: auto; border-radius: 6px;"),
+                    tags$figcaption(style = "font-size: 13px; color: #526372; margin-top: 6px;",
+                                    "The great American suburbanization: https://www.thoughtco.com/levittown-long-island-1435787"))
       ),
       
     # --- Scatterplot card ---
