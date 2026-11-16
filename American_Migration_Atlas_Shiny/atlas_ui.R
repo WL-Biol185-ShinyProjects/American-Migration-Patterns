@@ -340,11 +340,16 @@ migration_routes_tab <- function() {
 
 compare_states_tab <- function() {
   tabPanel(
-    title = "Compare states", value = "compare",
-    h1("Compare two states"),
-    p(class = "atlas-lede",
-      "Compare reported migration flows, 2020–2025 growth, and ACS socioeconomic measures; housing-cost burden is not included in this data release."),
-
+    title = "Compare states",
+    value = "compare",
+    
+    h1("Compare states"),
+    
+    p(
+      class = "atlas-lede",
+      "Every state tells a different story of Americans coming and going. During the COVID-19 era, some states welcomed more residents than they lost, while others experienced the opposite. Interestingly, higher incomes did not always mean greater population growth. What makes one state a popular destination while another sees residents leave? Comparing migration, housing, and economic conditions side by side may help uncover the reasons behind these differences."
+    ),
+    
     section_card(
       "Side-by-side comparison",
       div(class = "atlas-control-row",
