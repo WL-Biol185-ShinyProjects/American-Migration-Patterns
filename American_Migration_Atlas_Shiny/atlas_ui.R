@@ -214,14 +214,11 @@ explore_factors_tab <- function() {
   outcome_is_irs_condition <- input_is_one_of("y_metric", irs_metric_keys)
 
   tabPanel(
-    title = "Explore factors",
-    value = "explore",
+    title = "Explore factors", value = "explore",
     h1("Explore state-level relationships"),
-    p(
-      class = "atlas-lede",
-      "Throughout American history, people have moved in search of better opportunities. From the Industrial boom that drew workers to Northern cities to the growth of the Sun Belt, economic and social conditions have shaped where Americans choose to live. The COVID-19 era brought new changes to these patterns, as housing costs, employment opportunities, and income continued to influence where people settled. But which of these factors are most closely related to the states gaining and losing residents? Explore how different state-level characteristics relate to migration patterns across the country."
-    )
-  )
+    p(class = "atlas-lede",
+      "Choose a state-level factor and an outcome. Check the reporting periods below; points represent states, not individual movers."),
+    
     # --- Scatterplot card ---
     section_card(
       "Compare a factor and an outcome",
