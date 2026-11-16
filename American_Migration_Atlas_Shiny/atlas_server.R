@@ -996,11 +996,10 @@ server <- function(input, output, session) {
     plot_data <- scatter_data()
     outcome_is_irs <- input$y_metric %in% irs_metric_keys
 
-    warning_text <- paste("These sources have different reporting windows; the factor is not necessarily measured before migration.",
-                          "Associations do not establish causation.")
+    warning_text <- paste("The ACS and IRS have different reporting windows.")
     if (outcome_is_irs) {
       warning_text <- paste(warning_text, sum(plot_data$has_missing_routes),
-                            "plotted states have partial IRS totals. Open diamonds mark these states; they remain in the fit and correlation.")
+                            "Open diamond have partial IRS totals.; they remain in the fit and correlation.")
     }
     build_period_note(c(input$x_metric, input$y_metric), input$irs_period,
                       input$acs_year, warning_text)

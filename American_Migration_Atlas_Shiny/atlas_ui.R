@@ -679,7 +679,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,
 
 # JavaScript for two small behaviors:
 #   (1) highlight the sidebar button of the page that is open;
-#   (2) resize the map and move its color bar below the map on narrow screens.
+#   (2) keep the map scaled to the page size whenever the window is resized.
 app_js <- "$(document).on('shiny:connected', function() {
   Shiny.addCustomMessageHandler('atlas-active-page', function(page) {
     $('.atlas-sidebar .action-button').removeClass('atlas-active').removeAttr('aria-current');
@@ -692,25 +692,17 @@ app_js <- "$(document).on('shiny:connected', function() {
     var el = document.getElementById('state_map');
     if (!el || !el.data || !window.Plotly || !el.offsetWidth) return;
     var narrow = el.clientWidth < 620;
-    var update = {
-      'margin.r': narrow ? 8 : 95,
-      'margin.b': narrow ? 80 : 0,
-      'margin.t': 8,
-      'height': el.clientHeight,
-      'width': el.clientWidth
-    };
-    Plotly.relayout(el, update);
+    // autosize: true makes plotly re-measure its container, so the map always
+    // scales with the page. On narrow screens the color bar is made slimmer.
+    // (The color bar's orientation is never changed: plotly cannot redraw that
+    // cleanly, which used to break the map when the window was resized.)
+    Plotly.relayout(el, {'autosize': true, 'margin.r': narrow ? 70 : 95});
     Plotly.restyle(el, {
-      'colorbar.orientation': narrow ? 'h' : 'v',
-      'colorbar.x': narrow ? 0.5 : 1.01,
-      'colorbar.y': narrow ? -0.12 : 0.5,
-      'colorbar.xanchor': narrow ? 'center' : 'left',
-      'colorbar.yanchor': narrow ? 'top' : 'middle',
-      'colorbar.len': narrow ? 0.85 : 0.67,
-      'colorbar.thickness': narrow ? 12 : 15
+      'colorbar.thickness': narrow ? 10 : 15,
+      'colorbar.len': narrow ? 0.8 : 0.67
     }, [0]);
   }
-  function scheduleMap() { clearTimeout(timer); timer = setTimeout(fitAtlasMap, 120); }
+  function scheduleMap() { clearTimeout(timer); timer = setTimeout(fitAtlasMap, 60); }
   $(window).on('resize', scheduleMap);
   $(document).on('shiny:value', function(e) {
     if (e.name === 'state_map') scheduleMap();
