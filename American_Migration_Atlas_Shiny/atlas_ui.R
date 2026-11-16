@@ -156,7 +156,7 @@ overview_page_header <- function() {
     tags$header(class = "atlas-page-header",
                 h1("U.S. migration overview"),
                 p(class = "atlas-lede",
-                  "Explore state-level migration and population change. Select a measure, then click a state for details.")))
+                  "Where are Americans moving now? In the 1800’s, it was to the West Coast. In the late 1800’s, it was to the big cities and what is now the Rust Belt. For us, we seek to explore where Americans are moving just before and after the advent of COVID-19.  ")))
 }
 
 # The "Map measure" dropdown. It is placed inside the shared controls bar
@@ -192,7 +192,7 @@ overview_tab <- function() {
     # --- Top/bottom states bar chart ---
     section_card(
       "States gaining & losing",
-      subtitle = "Six highest and six lowest reported net migration proxies. * marks partial route data.",
+      subtitle = "There are winners and losers to every great American migration. The Rust Belt is now a husk of what it once was at the boom of the steel industry. The American South gained traffic with the invention of the air conditioner. What states have been winning/losing in the COVID era? Six highest and six lowest reported net migration proxies. * marks partial route data.",
       uiOutput("ranking_period_note"),
       plotOutput("net_rank_plot", height = "440px")))
 }
