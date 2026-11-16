@@ -380,11 +380,15 @@ compare_states_tab <- function() {
 
 trends_tab <- function() {
   tabPanel(
-    title = "Trends", value = "trends",
+    title = "Trends",
+    value = "trends",
+    
     h1("Changes over time"),
-    p(class = "atlas-lede",
-      "Compare ACS population and other measures for reference years 2019–2024, four IRS migration periods, or the separate 2020–2025 population endpoints."),
-
+    
+    p(
+      class = "atlas-lede",
+      "Migration is not a single moment in time, but a story that continues to unfold. Before, during, and after the COVID-19 era, Americans experienced changes in population, economic conditions, and where they chose to live. But did these migration patterns remain the same, or did new trends emerge? Following these changes over time reveals how the movement of Americans and the characteristics of states have evolved. Compare ACS population and other measures for reference years 2019–2024, four IRS migration periods, or the separate 2020–2025 population endpoints."
+    ),
     section_card(
       "Time-series comparison",
       div(class = "atlas-control-row",
