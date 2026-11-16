@@ -157,9 +157,12 @@ overview_page_header <- function() {
                 h1("U.S. migration overview"),
                 p(class = "atlas-lede",
                   "Where are Americans moving now? In the 1800’s, it was to the West Coast. In the late 1800’s, it was to the big cities and what is now the Rust Belt. For us, we seek to explore where Americans are moving just before and after the advent of COVID-19.  "),
-                tags$img(src = "OverviewPic1.png",
-                         alt = "https://www.history.com/articles/immigration-united-states-timeline",
-                         style = "max-width: 100%; height: auto; border-radius: 6px; margin-bottom: 16px;")))
+                tags$figure(style = "margin: 0 0 16px;",
+                            tags$img(src = "OverviewPic1.png",
+                                     alt = "https://www.history.com/articles/immigration-united-states-timeline",
+                                     style = "max-width: 100%; height: auto; border-radius: 6px;"),
+                            tags$figcaption(style = "font-size: 13px; color: #526372; margin-top: 6px;",
+                                            "US immigration in the 1800s: https://www.history.com/articles/immigration-united-states-timeline"))))
 }
 
 # The "Map measure" dropdown. It is placed inside the shared controls bar
@@ -196,6 +199,12 @@ overview_tab <- function() {
     section_card(
       "States gaining & losing",
       subtitle = "There are winners and losers to every great American migration. The Rust Belt is now a husk of what it once was at the boom of the steel industry. The American South gained traffic with the invention of the air conditioner. What states have been winning/losing in the COVID era? Six highest and six lowest reported net migration proxies. * marks partial route data.",
+      tags$figure(style = "margin: 0 0 16px;",
+                  tags$img(src = "OverviewPic2.png",
+                           alt = "https://www.geotab.com/ghost-towns/",
+                           style = "max-width: 100%; height: auto; border-radius: 6px;"),
+                  tags$figcaption(style = "font-size: 13px; color: #526372; margin-top: 6px;",
+                                  "An American Ghosttown: https://www.geotab.com/ghost-towns/ ")),
       uiOutput("ranking_period_note"),
       plotOutput("net_rank_plot", height = "440px")))
 }
