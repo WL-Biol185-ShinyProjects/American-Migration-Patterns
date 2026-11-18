@@ -317,13 +317,16 @@ migration_routes_tab <- function() {
     div(class = "two-even",
         section_card(
           "Top 10 interstate routes",
+          p(
+            "Explore the top 10 interstate routes to see where Americans were heading."
+          ),
                      uiOutput("route_chart_period_note"),
                      plotOutput("route_bar", height = "460px")),
         section_card(
           "All available route records",
           
           p(
-            "Behind every migration route is a story of households leaving one state and beginning a new chapter in another. But how many households made these moves, how many people did they represent, and how much income moved with them? The IRS migration records reveal the scale of these journeys and the economic patterns behind interstate migration."
+            "The IRS migration records reveal route records and economic patterns behind interstate migration."
           ),
                      subtitle = "N1 = tax returns (number of households migrating); N2 = exemptions (a proxy for represented persons migrating); AGI in millions of dollars.",
                      uiOutput("route_table_period_note"),
