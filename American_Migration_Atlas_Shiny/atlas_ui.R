@@ -245,10 +245,7 @@ explore_factors_tab <- function() {
     # --- Scatterplot card ---
     section_card(
       "Compare a factor and an outcome",
-      
-      p(
-        "During the COVID-19 era, Americans reconsidered where they wanted to live, with housing costs, income, and job opportunities potentially influencing their decisions. But which factors are most closely connected to where people are moving? Compare different state-level characteristics with migration rates and population growth to uncover patterns across the country."
-      ), div(class = "atlas-control-row",
+      div(class = "atlas-control-row",
           selectInput("x_metric", "X-axis: state-level factor",
                       choices = x_axis_choices, selected = "rent_share_of_income_pct"),
           selectInput("y_metric", "Y-axis: outcome",
@@ -278,10 +275,6 @@ explore_factors_tab <- function() {
     # --- Correlation ranking card ---
     section_card(
       "Compare correlations across factors",
-      
-      p(
-        "As migration patterns shifted during the COVID-19 era, Americans faced different economic and housing conditions across states. But were some factors more closely connected to migration than others? Compare the strength of these relationships to discover which state-level characteristics show the strongest connections to where Americans are moving."
-      ),
       subtitle = "Ranked by absolute Pearson correlation for the currently selected Y-axis outcome.",
       uiOutput("correlation_period_note"),
       DTOutput("correlation_table")))
