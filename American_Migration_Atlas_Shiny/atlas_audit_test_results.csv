@@ -1,5 +1,5 @@
 "test","status","detail"
-"Standard Shiny project launcher app.R exists","FAIL","file.exists(""app.R"") is not TRUE"
+"Standard Shiny project launcher app.R exists","PASS",""
 "Current project code, README and CSVs present","PASS",""
 "Load app components","PASS",""
 "50 states, 300 ACS state-years, and 200 IRS state-period records","PASS",""
