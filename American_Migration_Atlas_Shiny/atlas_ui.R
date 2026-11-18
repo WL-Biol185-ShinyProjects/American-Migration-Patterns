@@ -160,7 +160,7 @@ overview_page_header <- function() {
                 tags$figure(style = "margin: 0 0 16px;",
                             tags$img(src = "OverviewPic1.png",
                                      alt = "https://www.history.com/articles/immigration-united-states-timeline",
-                                     style = "max-width: 100%; height: auto; border-radius: 6px;"),
+                                     style = "width: 900px; max-width: 100%; height: auto; border-radius: 6px;"),
                             tags$figcaption(style = "font-size: 13px; color: #526372; margin-top: 6px;",
                                             "US immigration in the 1800s: https://www.history.com/articles/immigration-united-states-timeline"))))
 }
@@ -202,7 +202,7 @@ overview_tab <- function() {
       tags$figure(style = "margin: 0 0 16px;",
                   tags$img(src = "OverviewPic2.png",
                            alt = "https://www.geotab.com/ghost-towns/",
-                           style = "max-width: 100%; height: auto; border-radius: 6px;"),
+                           style = "width: 900px; max-width: 100%; height: auto; border-radius: 6px;"),
                   tags$figcaption(style = "font-size: 13px; color: #526372; margin-top: 6px;",
                                   "An American Ghosttown: https://www.geotab.com/ghost-towns/ ")),
       uiOutput("ranking_period_note"),
@@ -233,11 +233,11 @@ explore_factors_tab <- function() {
       
       p(
         class = "atlas-lede",
-        "Throughout American history, people have moved in search of better opportunities. From the industrial boom that drew workers to Northern cities to the growth of the Sun Belt, economic and social conditions have shaped where Americans choose to live. The COVID-19 era brought new changes to these patterns, as housing costs, employment opportunities, and income continued to influence where people settled. But which of these factors are most closely related to the states gaining and losing residents? Explore how different state-level characteristics relate to migration patterns across the country.",
+        "State macroeconomic factors play a role in affecting migration flows. We seek to explore the correlations between state-level statistics on migration flows and population growth. Some regressions like net migration and unemployment rates shows a level of correlation. However, other regressions like population growth and home value show weak correlations. Either way, this serves as a basis for finding interesting correlations to further study.",
         tags$figure(style = "margin: 0 0 16px;",
                     tags$img(src = "ExploreFactorsPic1.png",
                              alt = "https://www.thoughtco.com/levittown-long-island-1435787",
-                             style = "max-width: 100%; height: auto; border-radius: 6px;"),
+                             style = "width: 900px; max-width: 100%; height: auto; border-radius: 6px;"),
                     tags$figcaption(style = "font-size: 13px; color: #526372; margin-top: 6px;",
                                     "The great American suburbanization: https://www.thoughtco.com/levittown-long-island-1435787"))
       ),
@@ -302,6 +302,13 @@ migration_routes_tab <- function() {
       class = "atlas-lede",
       "Every move tells a story of someone leaving one state behind to begin a new chapter in another. During the COVID-19 era, millions of Americans crossed state lines, reshaping communities across the country. Some states welcomed new residents, while others watched people leave. But where did these journeys begin, and where did they lead? Follow the migration routes to discover how states are connected through the movement of Americans."
     ),
+    
+    tags$figure(style = "margin: 0 0 16px;",
+                tags$img(src = "OverviewPic1.png",
+                         alt = "https://www.history.com/articles/immigration-united-states-timeline",
+                         style = "width: 900px; max-width: 100%; height: auto; border-radius: 6px;"),
+                tags$figcaption(style = "font-size: 13px; color: #526372; margin-top: 6px;",
+                                "US immigration in the 1800s: https://www.history.com/articles/immigration-united-states-timeline")),
     
     # --- State/direction picker with summary boxes ---
     section_card(

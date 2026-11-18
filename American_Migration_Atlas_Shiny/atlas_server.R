@@ -65,6 +65,11 @@ library(dplyr)
 library(plotly) 
 library(DT)     
 
+if (packageVersion("ggplot2") >= "4.0.0" && packageVersion("plotly") < "4.11.0") {
+  stop("Your plotly (", packageVersion("plotly"), ") is too old for your ggplot2 (",
+       packageVersion("ggplot2"), "). Run install.packages(\"plotly\"), then restart R.",
+       call. = FALSE)
+}
 
 # ---------------------------------------------------------------------------
 # 2. FINDING AND READING THE CSV FILES
