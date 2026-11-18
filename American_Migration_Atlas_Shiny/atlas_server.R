@@ -192,8 +192,15 @@ diverging_metric_keys <- c("net_per_1000", "net_exemptions")
 # 4. LOAD: STATE POPULATION  ->  state_population
 # ---------------------------------------------------------------------------
 # Source: state_population_growth_clean.csv (population estimates, 2020 & 2025)
-
+# raw_source_csv - - - our custom function that reads and prepares a CSV.
+# raw_population_file - - - the variable storing the resulting table. Despite its
+# name, it holds the contents, not the file itself.
 raw_population_file <- read_source_csv("state_population_growth_clean.csv")
+# (c) - - - groups the 5 required column names together
+# names() - - - retrieves the headings in our table.
+# %in% - - - asks whether each required name appears among those headings.
+# all() - - - checks that every answer is TRUE
+# stopifnot() - - - stops execution if the check fails.
 stopifnot(all(c("STATE", "NAME", "POPESTIMATE2020", "POPESTIMATE2025",
                 "population_growth_pct") %in% names(raw_population_file)))
 
