@@ -14,3 +14,5 @@ source("atlas_server.R")
 source("atlas_ui.R")
 
 shinyApp(ui = ui, server = server)
+
+#I want to make it so that the text scales 
