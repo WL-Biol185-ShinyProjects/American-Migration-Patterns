@@ -317,10 +317,6 @@ migration_routes_tab <- function() {
     div(class = "two-even",
         section_card(
           "Top 10 interstate routes",
-          
-          p(
-            "While millions of Americans crossed state lines during the COVID-19 era, some migration routes were traveled far more than others. These movements reveal how certain destinations attracted larger numbers of people. But which routes experienced the greatest movement, and what do they tell us about changing migration patterns? Explore the top 10 interstate routes to see where Americans were heading."
-          ),
                      uiOutput("route_chart_period_note"),
                      plotOutput("route_bar", height = "460px")),
         section_card(
