@@ -354,7 +354,7 @@ compare_states_tab <- function() {
     
     p(
       class = "atlas-lede",
-      "Every state tells a different story of Americans coming and going. During the COVID-19 era, some states welcomed more residents than they lost, while others experienced the opposite. Interestingly, higher incomes did not always mean greater population growth. What makes one state a popular destination while another sees residents leave? Comparing migration, housing, and economic conditions side by side may help uncover the reasons behind these differences."
+      "Same region, different migration stories. Why? Compare two states side by side to spot regional differences in migration, income, housing costs, and population growth. Can you identify potential correlations at a glance?"
     ),
     
     section_card(
